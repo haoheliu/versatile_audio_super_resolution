@@ -1,1 +1,0 @@
-pytest --cov=src tests/*

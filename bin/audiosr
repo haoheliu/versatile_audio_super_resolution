@@ -19,14 +19,6 @@ parser.add_argument(
     help="Input audio file for audio super resolution",
 )
 
-# parser.add_argument(
-#     "--transcription",
-#     type=str,
-#     required=False,
-#     default="",
-#     help="Transcription for Text-to-Speech",
-# )
-
 parser.add_argument(
     "-il",
     "--input_file_list",
@@ -63,15 +55,6 @@ parser.add_argument(
     default="auto",
 )
 
-# parser.add_argument(
-#     "-b",
-#     "--batchsize",
-#     type=int,
-#     required=False,
-#     default=1,
-#     help="Generate how many samples at the same time",
-# )
-
 parser.add_argument(
     "--ddim_steps",
     type=int,
@@ -88,24 +71,6 @@ parser.add_argument(
     default=3.5,
     help="Guidance scale (Large => better quality and relavancy to text; Small => better diversity)",
 )
-
-# parser.add_argument(
-#     "-dur",
-#     "--duration",
-#     type=float,
-#     required=False,
-#     default=10.0,
-#     help="The duration of the samples",
-# )
-
-# parser.add_argument(
-#     "-n",
-#     "--n_candidate_gen_per_text",
-#     type=int,
-#     required=False,
-#     default=3,
-#     help="Automatic quality control. This number control the number of candidates (e.g., generate three audios and choose the best to show you). A Larger value usually lead to better quality with heavier computation",
-# )
 
 parser.add_argument(
     "--seed",

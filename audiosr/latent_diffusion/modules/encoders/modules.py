@@ -12,7 +12,7 @@ from audiosr.latent_diffusion.util import instantiate_from_config
 
 from transformers import AutoTokenizer, T5Config
 
-from audiosr.audiomae_gen.sequence_input import Sequence2AudioMAE
+
 import numpy as np
 
 """
@@ -31,7 +31,7 @@ def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode
     does not change anymore."""
     return self
-    
+
 class PhonemeEncoder(nn.Module):
     def __init__(self, vocabs_size=41, pad_length=250, pad_token_id=None):
         super().__init__()
@@ -231,110 +231,7 @@ class FlanT5HiddenState(nn.Module):
         return [
             encoder_hidden_states.detach(),
             attention_mask.float(),
-        ]  # Attention mask == 1 means usable token
-
-
-class SequenceGenAudioMAECond(Sequence2AudioMAE):
-    def __init__(
-        self,
-        cond_stage_config,
-        base_learning_rate,
-        sequence_gen_length,
-        sequence_input_key,
-        sequence_input_embed_dim,
-        batchsize,
-        always_output_audiomae_gt=False,
-        pretrained_path=None,
-        force_reload_pretrain_avoid_overwrite=False,
-        learnable=True,
-        use_warmup=True,
-        device=None,
-        use_gt_mae_output=None,  # False: does not use AudioMAE GT, True: Use AudioMAE GT
-        use_gt_mae_prob=None,
-    ):  # The prob of using AudioMAE GT
-        if use_warmup:
-            use_warmup = False
-
-        super().__init__(
-            base_learning_rate=base_learning_rate,
-            cond_stage_config=cond_stage_config,
-            sequence_gen_length=sequence_gen_length,
-            sequence_input_key=sequence_input_key,
-            use_warmup=use_warmup,
-            sequence_input_embed_dim=sequence_input_embed_dim,
-            batchsize=batchsize,
-        )
-
-        assert use_gt_mae_output is not None and use_gt_mae_prob is not None
-        self.always_output_audiomae_gt = always_output_audiomae_gt
-        self.force_reload_pretrain_avoid_overwrite = (
-            force_reload_pretrain_avoid_overwrite
-        )
-        self.pretrained_path = pretrained_path
-        self.device = device
-        if self.force_reload_pretrain_avoid_overwrite:
-            self.is_reload = False
-        else:
-            self.is_reload = True
-
-        self.load_pretrain_model()
-
-        self.use_gt_mae_output = use_gt_mae_output
-        self.use_gt_mae_prob = use_gt_mae_prob
-        self.learnable = learnable
-
-        if not learnable:
-            # Only optimize the GPT2 model
-            for p in self.model.parameters():
-                p.requires_grad = False
-            self.eval()
-
-    def load_pretrain_model(self):
-        if self.pretrained_path is not None:
-            print("Reload SequenceGenAudioMAECond from %s" % self.pretrained_path)
-            state_dict = torch.load(self.pretrained_path)["state_dict"]
-            self.load_state_dict(state_dict)
-
-    # Required
-    def get_unconditional_condition(self, batchsize):
-        return_dict = self.cfg_uncond(batchsize)
-        return_dict["crossattn_audiomae_generated"] = [
-            return_dict["crossattn_audiomae_pooled"][0],
-            torch.ones_like(return_dict["crossattn_audiomae_pooled"][1]).float(),
-        ]
-        return return_dict
-
-    def forward(self, batch):
-        # The conditional module can return both tensor or dictionaries
-        # The returned tensor will be corresponding to the cond_stage_key
-        # The returned dict will have keys that correspond to the cond_stage_key
-        ret_dict = {}
-
-        if self.force_reload_pretrain_avoid_overwrite and not self.is_reload:
-            self.load_pretrain_model()
-            self.is_reload = True
-
-        # if(self.always_output_audiomae_gt or (self.use_gt_mae_output and torch.rand(1).item() < self.use_gt_mae_prob)):
-        #     cond_dict = self.get_input(batch)
-        #     ret_dict["crossattn_audiomae_generated"] = [cond_dict["crossattn_audiomae_pooled"][0], torch.ones_like(cond_dict["crossattn_audiomae_pooled"][1]).float()] # Input sequence and mask
-        # else:
-        input_embeds, cond_dict = self.generate(batch)
-        input_embeds_mask = (
-            torch.ones((input_embeds.size(0), input_embeds.size(1)))
-            .to(input_embeds.device)
-            .float()
-        )
-        ret_dict["crossattn_audiomae_generated"] = [
-            input_embeds,
-            input_embeds_mask,
-        ]  # Input sequence and mask
-
-        # If the following two keys are not in cond_stage_key, then they will not be used as condition
-        for key in cond_dict.keys():
-            ret_dict[key] = cond_dict[key]
-
-        return ret_dict
-
+        ] 
 
 class AudioMAEConditionCTPoolRandTFSeparated(nn.Module):
     """
