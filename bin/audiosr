@@ -15,7 +15,7 @@ parser.add_argument(
     "-i",
     "--input_audio_file",
     type=str,
-    required=True,
+    required=False,
     help="Input audio file for audio super resolution",
 )
 
@@ -83,6 +83,8 @@ parser.add_argument(
 args = parser.parse_args()
 torch.set_float32_matmul_precision("high")
 save_path = os.path.join(args.save_path, get_time())
+
+assert args.input_file_list is not None or args.input_audio_file is not None,"Please provide either a list of audio files or a single audio file"
 
 input_file = args.input_audio_file
 random_seed = args.seed

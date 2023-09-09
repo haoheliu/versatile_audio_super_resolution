@@ -135,14 +135,13 @@ class VAEFeatureExtract(nn.Module):
 
     def forward(self, batch):
         assert self.vae.training==False
-        
         if(self.device is None):
             self.device = next(self.vae.parameters()).device
 
         with torch.no_grad():
             vae_embed=self.vae.encode(batch.unsqueeze(1)).sample()
-        if(self.unconditional_cond is None):
-            self.unconditional_cond = (-11.4981 + vae_embed[0].clone() * 0.0)
+        
+        self.unconditional_cond = (-11.4981 + vae_embed[0].clone() * 0.0)
 
         return vae_embed.detach()
 

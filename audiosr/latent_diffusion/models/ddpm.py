@@ -1,6 +1,6 @@
 from multiprocessing.sharedctypes import Value
 import os
-
+import librosa
 import torch
 import torch.nn as nn
 import numpy as np
@@ -21,12 +21,6 @@ from audiosr.latent_diffusion.modules.ema import LitEma
 from audiosr.latent_diffusion.modules.distributions.distributions import (
     DiagonalGaussianDistribution,
 )
-
-# from latent_encoder.autoencoder import (
-#     VQModelInterface,
-#     IdentityFirstStage,
-#     AutoencoderKL,
-# )
 
 from audiosr.latent_diffusion.modules.diffusionmodules.util import (
     make_beta_schedule,
@@ -1539,149 +1533,75 @@ class LatentDiffusion(DDPM):
             )
 
             mel = self.decode_first_stage(samples)
+            
+            mel = self.mel_replace_ops(mel, super().get_input(batch, "lowpass_mel"))
 
             waveform = self.mel_spectrogram_to_waveform(
                 mel, savepath="", bs=None, save=False
             )
 
-            # if n_gen > 1:
-            #     best_index = []
-            #     similarity = self.clap.cos_similarity(
-            #         torch.FloatTensor(waveform).squeeze(1), text
-            #     )
-            #     for i in range(z.shape[0]):
-            #         candidates = similarity[i :: z.shape[0]]
-            #         max_index = torch.argmax(candidates).item()
-            #         best_index.append(i + max_index * z.shape[0])
+            waveform_lowpass = super().get_input(batch, "waveform_lowpass")
+            waveform = self.postprocessing(waveform, waveform_lowpass)
 
-            #     waveform = waveform[best_index]
-
-            #     print("Similarity between generated audio and text:")
-            #     print(' '.join('{:.2f}'.format(num) for num in similarity.detach().cpu().tolist()))
-            #     print("Choose the following indexes as the output:", best_index)
+            max_amp = np.max(np.abs(waveform), axis=-1)
+            waveform = 0.5 * waveform / max_amp[...,None]
+            mean_amp=np.mean(np.abs(waveform), axis=-1)[...,None]
+            waveform = waveform - mean_amp
 
             return waveform
 
-    @torch.no_grad()
-    def generate_sample(
-        self,
-        batchs,
-        ddim_steps=200,
-        ddim_eta=1.0,
-        x_T=None,
-        n_gen=1,
-        unconditional_guidance_scale=1.0,
-        unconditional_conditioning=None,
-        name=None,
-        use_plms=False,
-        limit_num=None,
-        **kwargs,
-    ):
-        # Generate n_gen times and select the best
-        # Batch: audio, text, fnames
-        assert x_T is None
-        try:
-            batchs = iter(batchs)
-        except TypeError:
-            raise ValueError("The first input argument should be an iterable object")
+    def _locate_cutoff_freq(self, stft, percentile=0.985):
+        def _find_cutoff(x, percentile=0.95):
+            percentile = x[-1] * percentile
+            for i in range(1, x.shape[0]):
+                if x[-i] < percentile:
+                    return x.shape[0] - i
+            return 0
 
-        if use_plms:
-            assert ddim_steps is not None
+        magnitude = torch.abs(stft)
+        energy = torch.cumsum(torch.sum(magnitude, dim=0), dim=0) 
+        return _find_cutoff(energy, percentile)
 
-        use_ddim = ddim_steps is not None
-        if name is None:
-            name = self.get_validation_folder_name()
+    def mel_replace_ops(self, samples, input):
+        for i in range(samples.size(0)):
+            cutoff_melbin = self._locate_cutoff_freq(torch.exp(input[i]))
 
-        waveform_save_path = os.path.join(self.get_log_dir(), name)
-        os.makedirs(waveform_save_path, exist_ok=True)
-        print("Waveform save path: ", waveform_save_path)
+            # ratio = samples[i][...,:cutoff_melbin]/input[i][...,:cutoff_melbin]
+            # print(torch.mean(ratio), torch.max(ratio), torch.min(ratio))
 
-        if (
-            "audiocaps" in waveform_save_path
-            and len(os.listdir(waveform_save_path)) >= 964
-        ):
-            print("The evaluation has already been done at %s" % waveform_save_path)
-            return waveform_save_path
+            samples[i][...,:cutoff_melbin] = input[i][...,:cutoff_melbin]
+        return samples
 
-        with self.ema_scope("Plotting"):
-            for i, batch in enumerate(batchs):
-                z, c = self.get_input(
-                    batch,
-                    self.first_stage_key,
-                    unconditional_prob_cfg=0.0,  # Do not output unconditional information in the c
-                )
+    def postprocessing(self, out_batch, x_batch): # x is target
+        # Replace the low resolution part with the ground truth
+        for i in range(out_batch.shape[0]):
+            out = out_batch[i, 0]
+            x = x_batch[i, 0].cpu().numpy()
+            cutoffratio = self._get_cutoff_index_np(x)
 
-                if limit_num is not None and i * z.size(0) > limit_num:
-                    break
+            length = out.shape[0]
+            stft_gt = librosa.stft(x)
+            
+            stft_out = librosa.stft(out)
+            energy_ratio = np.mean(np.sum(np.abs(stft_gt[cutoffratio]))/np.sum(np.abs(stft_out[cutoffratio, ...])))
+            energy_ratio = min(max(energy_ratio, 0.8), 1.2)
+            stft_out[:cutoffratio, ...] = stft_gt[:cutoffratio, ...] / energy_ratio 
+            
+            out_renewed = librosa.istft(stft_out, length=length)
+            out_batch[i] = out_renewed
+        return out_batch
 
-                c = self.filter_useful_cond_dict(c)
+    def _find_cutoff_np(self, x, threshold=0.95):
+        threshold = x[-1] * threshold
+        for i in range(1, x.shape[0]):
+            if x[-i] < threshold:
+                return x.shape[0] - i
+        return 0
 
-                text = super().get_input(batch, "text")
-
-                # Generate multiple samples
-                batch_size = z.shape[0] * n_gen
-
-                # Generate multiple samples at a time and filter out the best
-                # The condition to the diffusion wrapper can have many format
-                for cond_key in c.keys():
-                    if isinstance(c[cond_key], list):
-                        for i in range(len(c[cond_key])):
-                            c[cond_key][i] = torch.cat([c[cond_key][i]] * n_gen, dim=0)
-                    elif isinstance(c[cond_key], dict):
-                        for k in c[cond_key].keys():
-                            c[cond_key][k] = torch.cat([c[cond_key][k]] * n_gen, dim=0)
-                    else:
-                        c[cond_key] = torch.cat([c[cond_key]] * n_gen, dim=0)
-
-                text = text * n_gen
-
-                if unconditional_guidance_scale != 1.0:
-                    unconditional_conditioning = {}
-                    for key in self.cond_stage_model_metadata:
-                        model_idx = self.cond_stage_model_metadata[key]["model_idx"]
-                        unconditional_conditioning[key] = self.cond_stage_models[
-                            model_idx
-                        ].get_unconditional_condition(batch_size)
-
-                fnames = list(super().get_input(batch, "fname"))
-                samples, _ = self.sample_log(
-                    cond=c,
-                    batch_size=batch_size,
-                    x_T=x_T,
-                    ddim=use_ddim,
-                    ddim_steps=ddim_steps,
-                    eta=ddim_eta,
-                    unconditional_guidance_scale=unconditional_guidance_scale,
-                    unconditional_conditioning=unconditional_conditioning,
-                    use_plms=use_plms,
-                )
-
-                mel = self.decode_first_stage(samples)
-
-                waveform = self.mel_spectrogram_to_waveform(
-                    mel, savepath=waveform_save_path, bs=None, name=fnames, save=False
-                )
-
-                if n_gen > 1:
-                    try:
-                        best_index = []
-                        similarity = self.clap.cos_similarity(
-                            torch.FloatTensor(waveform).squeeze(1), text
-                        )
-                        for i in range(z.shape[0]):
-                            candidates = similarity[i :: z.shape[0]]
-                            max_index = torch.argmax(candidates).item()
-                            best_index.append(i + max_index * z.shape[0])
-
-                        waveform = waveform[best_index]
-
-                        print("Similarity between generated audio and text", similarity)
-                        print("Choose the following indexes:", best_index)
-                    except Exception as e:
-                        print("Warning: while calculating CLAP score (not fatal), ", e)
-                self.save_waveform(waveform, waveform_save_path, name=fnames)
-        return waveform_save_path
-
+    def _get_cutoff_index_np(self, x):
+        stft_x = np.abs(librosa.stft(x))
+        energy = np.cumsum(np.sum(stft_x, axis=-1))
+        return self._find_cutoff_np(energy, 0.985)
 
 class DiffusionWrapper(nn.Module):
     def __init__(self, diff_model_config, conditioning_key):
@@ -1742,16 +1662,7 @@ class DiffusionWrapper(nn.Module):
                 continue
             else: 
                 raise NotImplementedError()
-        
-        if(not self.being_verbosed_once):
-            print("The input shape to the diffusion model is as follows:")
-            print("xc", xc.size())
-            print("t", t.size())
-            for i in range(len(context_list)):
-                print("context_%s" % i, context_list[i].size(), attn_mask_list[i].size())
-            if(y is not None):
-                print("y", y.size())
-            self.being_verbosed_once = True    
+          
         out = self.diffusion_model(xc, t, context_list=context_list, y=y, context_attn_mask_list=attn_mask_list)
         return out
 

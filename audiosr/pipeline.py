@@ -78,8 +78,10 @@ def make_batch_for_super_resolution(input_file, waveform=None, fbank=None):
         "sampling_rate": 48000,
     }
 
-    batch.update(lowpass_filtering_prepare_inference(batch))
+    # print(batch["waveform"].size(), batch["stft"].size(), batch["log_mel_spec"].size())
 
+    batch.update(lowpass_filtering_prepare_inference(batch))
+    
     assert "waveform_lowpass" in batch.keys()
     lowpass_mel,lowpass_stft = wav_feature_extraction(batch["waveform_lowpass"], target_frame)
     batch["lowpass_mel"]=lowpass_mel 
@@ -87,7 +89,6 @@ def make_batch_for_super_resolution(input_file, waveform=None, fbank=None):
     for k in batch.keys():
         if(type(batch[k]) == torch.Tensor):
             batch[k] = torch.FloatTensor(batch[k]).unsqueeze(0)
-            print(k, batch[k].size())
     
     return batch, duration
 

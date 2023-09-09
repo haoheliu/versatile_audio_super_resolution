@@ -144,7 +144,7 @@ def read_wav_file(filename):
     waveform, sr = torchaudio.load(filename)
     duration = waveform.size(-1) / sr
     pad_duration = duration + (2.56-duration % 2.56)
-    target_frame = int(duration * 100)
+    target_frame = int(pad_duration * 100)
     
     waveform = torchaudio.functional.resample(waveform, sr, 48000)
 
@@ -158,7 +158,7 @@ def read_wav_file(filename):
     )
     return waveform, target_frame, pad_duration
 
-def read_audio_file( filename):
+def read_audio_file(filename):
     waveform, target_frame, duration = read_wav_file(filename)
     log_mel_spec, stft = wav_feature_extraction(waveform, target_frame)
     return log_mel_spec, stft, waveform, duration, target_frame

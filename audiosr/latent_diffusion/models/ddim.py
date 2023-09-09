@@ -290,10 +290,11 @@ class DDIMSampler(object):
             assert isinstance(c, dict)
             assert isinstance(unconditional_conditioning, dict)
 
+            model_t = self.model.apply_model(x_in, t_in, c)
+
             model_uncond = self.model.apply_model(
                 x_in, t_in, unconditional_conditioning
             )
-            model_t = self.model.apply_model(x_in, t_in, c)
 
             model_output = model_uncond + unconditional_guidance_scale * (
                 model_t - model_uncond
