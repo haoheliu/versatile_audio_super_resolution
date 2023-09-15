@@ -13,6 +13,7 @@ from torch.utils.data.distributed import DistributedSampler
 import soundfile as sf
 import io
 from pathlib import Path
+
 # import wget
 
 from audiosr.clap.open_clip.utils import get_tar_path_from_dataset_name
@@ -63,6 +64,7 @@ def int16_to_float32(x):
 def float32_to_int16(x):
     x = np.clip(x, a_min=-1.0, a_max=1.0)
     return (x * 32767.0).astype(np.int16)
+
 
 # For Toy Dataset
 # class ToyDataset(Dataset):
@@ -229,6 +231,7 @@ class CsvDataset(Dataset):
         images = self.transforms(Image.open(str(self.images[idx])))
         texts = tokenize([str(self.captions[idx])])[0]
         return images, texts
+
 
 @dataclass
 class DataInfo:

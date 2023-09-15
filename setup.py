@@ -55,7 +55,7 @@ REQUIRED = [
     "huggingface_hub",
     "progressbar",
     "ftfy",
-    "timm"
+    "timm",
 ]
 
 # What packages are optional?
@@ -84,6 +84,7 @@ if not VERSION:
         exec(f.read(), about)
 else:
     about["__version__"] = VERSION
+
 
 class UploadCommand(Command):
     """Support setup.py upload."""

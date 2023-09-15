@@ -24,7 +24,7 @@ class DDIMSampler(object):
         if type(attr) == torch.Tensor:
             if attr.device != self.device:
                 is_mps = self.device == "mps" or self.device == torch.device("mps")
-                if is_mps and attr.dtype==torch.float64:
+                if is_mps and attr.dtype == torch.float64:
                     attr = attr.to(self.device, dtype=torch.float32)
                 else:
                     attr = attr.to(self.device)

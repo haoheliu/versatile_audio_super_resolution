@@ -27,10 +27,12 @@ x,x_mask = [bs, seq_len, emb_dim], [bs, seq_len]
 All the returned data, in which will be used as diffusion input, will need to be in float type
 """
 
+
 def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode
     does not change anymore."""
     return self
+
 
 class PhonemeEncoder(nn.Module):
     def __init__(self, vocabs_size=41, pad_length=250, pad_token_id=None):
@@ -100,7 +102,7 @@ class PhonemeEncoder(nn.Module):
         if self.device is None:
             self.device = self.learnable_positional_embedding.device
             self.pad_token_sequence = self.pad_token_sequence.to(self.device)
-        
+
         phoneme_idx = phoneme_idx.to(self.device)
 
         src_length = self._get_src_length(phoneme_idx)
@@ -114,36 +116,38 @@ class PhonemeEncoder(nn.Module):
             text_emb_mask.squeeze(1),
         ]  # [2, 250, 192], [2, 250]
 
+
 class VAEFeatureExtract(nn.Module):
     def __init__(self, first_stage_config):
         super().__init__()
         # self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        self.vae=None
+        self.vae = None
         self.instantiate_first_stage(first_stage_config)
         self.device = None
         self.unconditional_cond = None
 
     def get_unconditional_condition(self, batchsize):
-        return self.unconditional_cond.unsqueeze(0).expand(batchsize,-1,-1,-1)
-    
+        return self.unconditional_cond.unsqueeze(0).expand(batchsize, -1, -1, -1)
+
     def instantiate_first_stage(self, config):
         self.vae = instantiate_from_config(config)
         self.vae.eval()
         for p in self.vae.parameters():
-            p.requires_grad=False
+            p.requires_grad = False
         self.vae.train = disabled_train
 
     def forward(self, batch):
-        assert self.vae.training==False
-        if(self.device is None):
+        assert self.vae.training == False
+        if self.device is None:
             self.device = next(self.vae.parameters()).device
 
         with torch.no_grad():
-            vae_embed=self.vae.encode(batch.unsqueeze(1)).sample()
-        
-        self.unconditional_cond = (-11.4981 + vae_embed[0].clone() * 0.0)
+            vae_embed = self.vae.encode(batch.unsqueeze(1)).sample()
+
+        self.unconditional_cond = -11.4981 + vae_embed[0].clone() * 0.0
 
         return vae_embed.detach()
+
 
 class FlanT5HiddenState(nn.Module):
     """
@@ -230,7 +234,8 @@ class FlanT5HiddenState(nn.Module):
         return [
             encoder_hidden_states.detach(),
             attention_mask.float(),
-        ] 
+        ]
+
 
 class AudioMAEConditionCTPoolRandTFSeparated(nn.Module):
     """
@@ -452,7 +457,7 @@ class AudioMAEConditionCTPoolRand(nn.Module):
     # Required
     def forward(self, batch, time_pool=None, freq_pool=None):
         assert batch.size(-2) == 1024 and batch.size(-1) == 128
-        
+
         if self.device is None:
             self.device = next(self.audiomae.parameters()).device
 
@@ -489,7 +494,7 @@ class CLAPAudioEmbeddingClassifierFreev2(nn.Module):
         training_mode=True,
     ):
         super().__init__()
-        self.device = "cpu" # The model itself is on cpu
+        self.device = "cpu"  # The model itself is on cpu
         self.cuda = enable_cuda
         self.precision = "fp32"
         self.amodel = amodel  # or 'PANN-14'

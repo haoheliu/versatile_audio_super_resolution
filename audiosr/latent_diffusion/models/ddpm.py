@@ -36,7 +36,6 @@ import os
 __conditioning_keys__ = {"concat": "c_concat", "crossattn": "c_crossattn", "adm": "y"}
 
 
-
 def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode
     does not change anymore."""
@@ -104,7 +103,7 @@ class DDPM(nn.Module):
 
         self.clap = CLAPAudioEmbeddingClassifierFreev2(
             pretrained_path="",
-            enable_cuda=self.device=="cuda",
+            enable_cuda=self.device == "cuda",
             sampling_rate=self.sampling_rate,
             embed_mode="audio",
             amodel="HTSAT-base",
@@ -768,7 +767,10 @@ class LatentDiffusion(DDPM):
     def instantiate_cond_stage(self, config):
         self.cond_stage_model_metadata = {}
         for i, cond_model_key in enumerate(config.keys()):
-            if "params" in config[cond_model_key] and "device" in config[cond_model_key]["params"]:
+            if (
+                "params" in config[cond_model_key]
+                and "device" in config[cond_model_key]["params"]
+            ):
                 config[cond_model_key]["params"]["device"] = self.device
             model = instantiate_from_config(config[cond_model_key])
             model = model.to(self.device)
@@ -951,7 +953,7 @@ class LatentDiffusion(DDPM):
                 new_cond_dict[key] = cond_dict[key]
 
         # All the conditional key in the metadata should be used
-        
+
         for key in self.cond_stage_model_metadata.keys():
             assert key in new_cond_dict.keys(), "%s, %s" % (
                 key,
@@ -1487,7 +1489,6 @@ class LatentDiffusion(DDPM):
 
         # with self.ema_scope("Plotting"):
         for i in range(1):
-
             z, c = self.get_input(
                 batch,
                 self.first_stage_key,
@@ -1533,7 +1534,7 @@ class LatentDiffusion(DDPM):
             )
 
             mel = self.decode_first_stage(samples)
-            
+
             mel = self.mel_replace_ops(mel, super().get_input(batch, "lowpass_mel"))
 
             waveform = self.mel_spectrogram_to_waveform(
@@ -1544,8 +1545,8 @@ class LatentDiffusion(DDPM):
             waveform = self.postprocessing(waveform, waveform_lowpass)
 
             max_amp = np.max(np.abs(waveform), axis=-1)
-            waveform = 0.5 * waveform / max_amp[...,None]
-            mean_amp=np.mean(np.abs(waveform), axis=-1)[...,None]
+            waveform = 0.5 * waveform / max_amp[..., None]
+            mean_amp = np.mean(np.abs(waveform), axis=-1)[..., None]
             waveform = waveform - mean_amp
 
             return waveform
@@ -1559,7 +1560,7 @@ class LatentDiffusion(DDPM):
             return 0
 
         magnitude = torch.abs(stft)
-        energy = torch.cumsum(torch.sum(magnitude, dim=0), dim=0) 
+        energy = torch.cumsum(torch.sum(magnitude, dim=0), dim=0)
         return _find_cutoff(energy, percentile)
 
     def mel_replace_ops(self, samples, input):
@@ -1569,10 +1570,10 @@ class LatentDiffusion(DDPM):
             # ratio = samples[i][...,:cutoff_melbin]/input[i][...,:cutoff_melbin]
             # print(torch.mean(ratio), torch.max(ratio), torch.min(ratio))
 
-            samples[i][...,:cutoff_melbin] = input[i][...,:cutoff_melbin]
+            samples[i][..., :cutoff_melbin] = input[i][..., :cutoff_melbin]
         return samples
 
-    def postprocessing(self, out_batch, x_batch): # x is target
+    def postprocessing(self, out_batch, x_batch):  # x is target
         # Replace the low resolution part with the ground truth
         for i in range(out_batch.shape[0]):
             out = out_batch[i, 0]
@@ -1581,12 +1582,15 @@ class LatentDiffusion(DDPM):
 
             length = out.shape[0]
             stft_gt = librosa.stft(x)
-            
+
             stft_out = librosa.stft(out)
-            energy_ratio = np.mean(np.sum(np.abs(stft_gt[cutoffratio]))/np.sum(np.abs(stft_out[cutoffratio, ...])))
+            energy_ratio = np.mean(
+                np.sum(np.abs(stft_gt[cutoffratio]))
+                / np.sum(np.abs(stft_out[cutoffratio, ...]))
+            )
             energy_ratio = min(max(energy_ratio, 0.8), 1.2)
-            stft_out[:cutoffratio, ...] = stft_gt[:cutoffratio, ...] / energy_ratio 
-            
+            stft_out[:cutoffratio, ...] = stft_gt[:cutoffratio, ...] / energy_ratio
+
             out_renewed = librosa.istft(stft_out, length=length)
             out_batch[i] = out_renewed
         return out_batch
@@ -1603,24 +1607,32 @@ class LatentDiffusion(DDPM):
         energy = np.cumsum(np.sum(stft_x, axis=-1))
         return self._find_cutoff_np(energy, 0.985)
 
+
 class DiffusionWrapper(nn.Module):
     def __init__(self, diff_model_config, conditioning_key):
         super().__init__()
         self.diffusion_model = instantiate_from_config(diff_model_config)
-        self.scale_factor = None # This factor is set in LatentDiffusion for scaling of VAE latent
+        self.scale_factor = (
+            None  # This factor is set in LatentDiffusion for scaling of VAE latent
+        )
         self.conditioning_key = conditioning_key
 
         for key in self.conditioning_key:
-            if("concat" in key or "crossattn" in key or "hybrid" in key or "film" in key or "noncond" in key or "ignore" in key):
+            if (
+                "concat" in key
+                or "crossattn" in key
+                or "hybrid" in key
+                or "film" in key
+                or "noncond" in key
+                or "ignore" in key
+            ):
                 continue
             else:
                 raise Value("The conditioning key %s is illegal" % key)
-        
+
         self.being_verbosed_once = False
 
-    def forward(
-        self, x, t, cond_dict: dict={}
-    ):
+    def forward(self, x, t, cond_dict: dict = {}):
         x = x.contiguous()
         t = t.contiguous()
 
@@ -1629,41 +1641,50 @@ class DiffusionWrapper(nn.Module):
 
         y = None
         context_list, attn_mask_list = [], []
-        
+
         conditional_keys = cond_dict.keys()
 
         for key in conditional_keys:
-            if("ignore" in key):
+            if "ignore" in key:
                 continue
-            elif("concat" in key):
+            elif "concat" in key:
                 cond = cond_dict[key]
                 cond = cond * self.scale_factor
                 xc = torch.cat([x, cond], dim=1)
-            elif("film" in key):
-                if(y is None):
+            elif "film" in key:
+                if y is None:
                     y = cond_dict[key].squeeze(1)
                 else:
-                    y = torch.cat([y, cond_dict[key].squeeze(1)],dim=-1)
-            elif("crossattn" in key):
+                    y = torch.cat([y, cond_dict[key].squeeze(1)], dim=-1)
+            elif "crossattn" in key:
                 # assert context is None, "You can only have one context matrix, got %s" % (cond_dict.keys())
-                if(isinstance(cond_dict[key], dict)):
+                if isinstance(cond_dict[key], dict):
                     for k in cond_dict[key].keys():
-                        if("crossattn" in k):
-                            context, attn_mask = cond_dict[key][k] # crossattn_audiomae_pooled: torch.Size([12, 128, 768])
+                        if "crossattn" in k:
+                            context, attn_mask = cond_dict[key][
+                                k
+                            ]  # crossattn_audiomae_pooled: torch.Size([12, 128, 768])
                 else:
-                    assert len(cond_dict[key]) == 2, "The context condition for %s you returned should have two element, one context one mask" % (key)
+                    assert len(cond_dict[key]) == 2, (
+                        "The context condition for %s you returned should have two element, one context one mask"
+                        % (key)
+                    )
                     context, attn_mask = cond_dict[key]
-                
+
                 # The input to the UNet model is a list of context matrix
                 context_list.append(context)
                 attn_mask_list.append(attn_mask)
 
-            elif("noncond" in key): # If you use loss function in the conditional module, include the keyword "noncond" in the return dictionary
+            elif (
+                "noncond" in key
+            ):  # If you use loss function in the conditional module, include the keyword "noncond" in the return dictionary
                 continue
-            else: 
+            else:
                 raise NotImplementedError()
-          
-        out = self.diffusion_model(xc, t, context_list=context_list, y=y, context_attn_mask_list=attn_mask_list)
+
+        out = self.diffusion_model(
+            xc, t, context_list=context_list, y=y, context_attn_mask_list=attn_mask_list
+        )
         return out
 
 
