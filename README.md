@@ -20,7 +20,7 @@ Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampli
 # Optional
 conda create -n audiosr python=3.9; conda activate audiosr
 # Install AudioLDM
-pip3 install git+https://github.com/haoheliu/versatile_audio_super_resolution
+pip3 install audiosr==0.0.2
 ```
 
 ## Usage
