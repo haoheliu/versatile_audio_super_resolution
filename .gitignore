@@ -4,7 +4,6 @@ test.py
 flagged
 output
 gradio_cached*
-dist*
 *egg-info
 build*
 *.wav

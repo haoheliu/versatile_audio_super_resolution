@@ -1,4 +1,7 @@
+
 # AudioSR: Versatile Audio Super-resolution at Scale
+
+[![arXiv](https://img.shields.io/badge/arXiv-2301.12503-brightgreen.svg?style=flat-square)](https://arxiv.org/abs/2309.07314)  [![githubio](https://img.shields.io/badge/GitHub.io-Audio_Samples-blue?logo=Github&style=flat-square)](https://audioldm.github.io/audiosr)
 
 Pass your audio in, AudioSR will make it high fidelity! 
 
@@ -60,5 +63,12 @@ optional arguments:
 ```
 
 ## Cite our work
-
-If you find this repo useful, please consider citing our work 
+If you find this repo useful, please consider citing: 
+```bibtex
+@article{liu2023audioldm,
+  title={{AudioSR}: Versatile Audio Super-resolution at Scale},
+  author={Liu, Haohe and Chen, Ke and Tian, Qiao and Wang, Wenwu and Plumbley, Mark D},
+  journal={arXiv preprint arXiv:2309.07314},
+  year={2023}
+}
+```
