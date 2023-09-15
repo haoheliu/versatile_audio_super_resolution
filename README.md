@@ -7,7 +7,7 @@ Pass your audio in, AudioSR will make it high fidelity!
 
 Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampling rates.
 
-![Image Description](visualization.png)
+![Image Description](https://github.com/haoheliu/versatile_audio_super_resolution/blob/main/visualization.png?raw=true)
 
 ## TODO
 - [ ] Add gradio demo.
