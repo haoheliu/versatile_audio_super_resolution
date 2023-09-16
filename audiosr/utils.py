@@ -178,11 +178,18 @@ def normalize_wav(waveform):
     waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
     return waveform * 0.5
 
-
 def read_wav_file(filename):
     waveform, sr = torchaudio.load(filename)
     duration = waveform.size(-1) / sr
-    pad_duration = duration + (2.56 - duration % 2.56)
+
+    if(duration > 10.24):
+        print("\033[93m {}\033[00m" .format("Warning: audio is longer than 10.24 seconds, may degrade the model performance. It's recommand to truncate your audio to 5.12 seconds before input to AudioSR to get the best performance."))
+
+    if(duration % 5.12 != 0):
+        pad_duration = duration + (5.12 - duration % 5.12)
+    else:
+        pad_duration = duration
+
     target_frame = int(pad_duration * 100)
 
     waveform = torchaudio.functional.resample(waveform, sr, 48000)
@@ -196,7 +203,6 @@ def read_wav_file(filename):
     waveform = waveform[None, ...]
     waveform = pad_wav(waveform, target_length=int(48000 * pad_duration))
     return waveform, target_frame, pad_duration
-
 
 def read_audio_file(filename):
     waveform, target_frame, duration = read_wav_file(filename)
@@ -268,7 +274,8 @@ def save_wave(waveform, savepath, name="outwav", samplerate=16000):
                 fname = f"{hex(hash(fname))}.wav"
 
         path = os.path.join(savepath, fname)
-        print("Save audio to %s" % path)
+        print("\033[98m {}\033[00m" .format("Don't forget to try different seeds by setting --seed <int> so that AudioSR can have optimal performance on your hardware."))
+        print("Save audio to %s." % path)
         sf.write(path, waveform[i, 0], samplerate=samplerate)
 
 

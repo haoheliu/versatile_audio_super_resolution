@@ -59,7 +59,7 @@ parser.add_argument(
     "--ddim_steps",
     type=int,
     required=False,
-    default=200,
+    default=50,
     help="The sampling step for DDIM",
 )
 
@@ -76,7 +76,7 @@ parser.add_argument(
     "--seed",
     type=int,
     required=False,
-    default=0,
+    default=42,
     help="Change this value (any integer number) will lead to a different generation result.",
 )
 
@@ -112,5 +112,4 @@ for input_file in files_todo:
         ddim_steps=args.ddim_steps,
         latent_t_per_second=latent_t_per_second
     )
-    
     save_wave(waveform, save_path, name=name, samplerate=sample_rate)

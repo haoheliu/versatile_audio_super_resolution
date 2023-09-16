@@ -1546,7 +1546,7 @@ class LatentDiffusion(DDPM):
 
             max_amp = np.max(np.abs(waveform), axis=-1)
             waveform = 0.5 * waveform / max_amp[..., None]
-            mean_amp = np.mean(np.abs(waveform), axis=-1)[..., None]
+            mean_amp = np.mean(waveform, axis=-1)[..., None]
             waveform = waveform - mean_amp
 
             return waveform
