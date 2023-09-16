@@ -9,9 +9,8 @@ Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampli
 
 ![Image Description](https://github.com/haoheliu/versatile_audio_super_resolution/blob/main/visualization.png?raw=true)
 
-## TODO
-- [ ] Add gradio demo.
-- [ ] Optimize the inference speed.
+## Change Log
+- 2023-09-16: Fix DC shift issue. Fix duration padding bug. Update default DDIM steps to 50.
 
 ## Commandline Usage
 
@@ -20,7 +19,7 @@ Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampli
 # Optional
 conda create -n audiosr python=3.9; conda activate audiosr
 # Install AudioLDM
-pip3 install audiosr==0.0.2
+pip3 install audiosr==0.0.3
 ```
 
 ## Usage
@@ -61,6 +60,11 @@ optional arguments:
                         Guidance scale (Large => better quality and relavancy to text; Small => better diversity)
   --seed SEED           Change this value (any integer number) will lead to a different generation result.
 ```
+
+
+## TODO
+- [ ] Add gradio demo.
+- [ ] Optimize the inference speed.
 
 ## Cite our work
 If you find this repo useful, please consider citing: 
