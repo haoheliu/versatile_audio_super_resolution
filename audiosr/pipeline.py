@@ -4,6 +4,7 @@ import re
 import yaml
 import torch
 import torchaudio
+import numpy as np
 
 import audiosr.latent_diffusion.modules.phoneme_encoder.text as text
 from audiosr.latent_diffusion.models.ddpm import LatentDiffusion
@@ -141,7 +142,7 @@ def build_model(ckpt_path=None, config=None, device=None, model_name="basic"):
 
     checkpoint = torch.load(resume_from_checkpoint, map_location=device)
 
-    latent_diffusion.load_state_dict(checkpoint["state_dict"])
+    latent_diffusion.load_state_dict(checkpoint["state_dict"], strict=False)
 
     latent_diffusion.eval()
     latent_diffusion = latent_diffusion.to(device)
