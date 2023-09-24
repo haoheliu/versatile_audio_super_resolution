@@ -2,7 +2,8 @@ import os
 import torch
 import logging
 import argparse
-from audiosr import super_resolution, build_model, save_wave
+import tempfile
+from audiosr import super_resolution, build_model, save_wave, strip_silence
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 torch.set_float32_matmul_precision("high")
 
+tmp_dir = tempfile.gettempdir()
 
 def main(args):
     audiosr = build_model(model_name=args.model_name, device="auto")
@@ -23,8 +25,10 @@ def main(args):
         latent_t_per_second=12.8
     )
     
-    save_wave(waveform, args.save_path, name="output", samplerate=48000)
-
+    save_wave(waveform, tmp_dir, name="output", samplerate=48000)
+    
+    basename = os.path.basename(args.input_path)
+    strip_silence(args.input_path, f'{tmp_dir}\\{basename}', f'{args.save_path}\\{basename}')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Perform super-resolution on audio files using audiosr package.')

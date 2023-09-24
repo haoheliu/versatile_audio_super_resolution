@@ -6,6 +6,8 @@ import torch
 
 from inspect import isfunction
 import os
+import subprocess
+import json
 import soundfile as sf
 import time
 import wave
@@ -475,3 +477,29 @@ def get_basic_config():
             },
         },
     }
+
+
+
+def strip_silence(orignal_path, input_path, output_path):
+    get_dur = subprocess.run([
+        'ffprobe',
+        '-v', 'error',
+        '-select_streams', 'a:0',
+        '-show_entries', 'format=duration',
+        '-sexagesimal',
+        '-of', 'json',
+        orignal_path
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    duration = json.loads(get_dur.stdout)['format']['duration']
+    
+    subprocess.run([
+        'ffmpeg',
+        '-y',
+        '-ss', '00:00:00',
+        '-i', input_path,
+        '-t', duration,
+        '-c', 'copy',
+        output_path
+    ])
+    os.remove(input_path)
