@@ -7,6 +7,8 @@ Pass your audio in, AudioSR will make it high fidelity!
 
 Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampling rates.
 
+Share your thoughts/samples/issues in our discord channel: https://discord.gg/HWeBsJryaf
+
 ![Image Description](https://github.com/haoheliu/versatile_audio_super_resolution/blob/main/visualization.png?raw=true)
 
 ## Change Log
