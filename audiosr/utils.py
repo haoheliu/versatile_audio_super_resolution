@@ -106,7 +106,7 @@ def mel_spectrogram_train(y):
     mel_fmax = 24000
 
     if 24000 not in mel_basis:
-        mel = librosa_mel_fn(sampling_rate, filter_length, n_mel, mel_fmin, mel_fmax)
+        mel = librosa_mel_fn(sr=sampling_rate, n_fft=filter_length, n_mels=n_mel, fmin=mel_fmin, fmax=mel_fmax)
         mel_basis[str(mel_fmax) + "_" + str(y.device)] = (
             torch.from_numpy(mel).float().to(y.device)
         )
