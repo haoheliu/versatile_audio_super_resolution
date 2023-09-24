@@ -19,7 +19,7 @@ Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampli
 # Optional
 conda create -n audiosr python=3.9; conda activate audiosr
 # Install AudioLDM
-pip3 install audiosr==0.0.3
+pip3 install audiosr==0.0.4
 ```
 
 ## Usage
@@ -59,6 +59,7 @@ optional arguments:
   -gs GUIDANCE_SCALE, --guidance_scale GUIDANCE_SCALE
                         Guidance scale (Large => better quality and relavancy to text; Small => better diversity)
   --seed SEED           Change this value (any integer number) will lead to a different generation result.
+  --suffix SUFFIX       Suffix for the output file
 ```
 
 

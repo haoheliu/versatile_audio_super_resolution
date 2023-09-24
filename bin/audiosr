@@ -80,6 +80,14 @@ parser.add_argument(
     help="Change this value (any integer number) will lead to a different generation result.",
 )
 
+parser.add_argument(
+    "--suffix",
+    type=str,
+    required=False,
+    help="Suffix for the output file",
+    default="_AudioSR_Processed_48K",
+)
+
 args = parser.parse_args()
 torch.set_float32_matmul_precision("high")
 save_path = os.path.join(args.save_path, get_time())
@@ -102,7 +110,7 @@ else:
     files_todo = [input_file]
     
 for input_file in files_todo:
-    name = os.path.basename(input_file).split(".")[0]+"_AudioSR_Processed_48K"
+    name = os.path.basename(input_file).split(".")[0] + args.suffix
 
     waveform = super_resolution(
         audiosr,
