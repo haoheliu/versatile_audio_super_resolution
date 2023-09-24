@@ -7,3 +7,4 @@ gradio_cached*
 *egg-info
 build*
 *.wav
+dist/

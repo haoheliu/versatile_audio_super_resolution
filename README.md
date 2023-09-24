@@ -10,6 +10,7 @@ Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampli
 ![Image Description](https://github.com/haoheliu/versatile_audio_super_resolution/blob/main/visualization.png?raw=true)
 
 ## Change Log
+- 2023-09-24: Add replicate demo (@nateraw); Fix error on windows, librosa warning etc (@ORI-Muchim).  
 - 2023-09-16: Fix DC shift issue. Fix duration padding bug. Update default DDIM steps to 50.
 
 ## Commandline Usage
@@ -19,7 +20,7 @@ Work on all types of audio (e.g., music, speech, dog, raining, ...) & all sampli
 # Optional
 conda create -n audiosr python=3.9; conda activate audiosr
 # Install AudioLDM
-pip3 install audiosr==0.0.4
+pip3 install audiosr==0.0.5
 ```
 
 ## Usage

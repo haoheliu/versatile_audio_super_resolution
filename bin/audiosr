@@ -110,7 +110,7 @@ else:
     files_todo = [input_file]
     
 for input_file in files_todo:
-    name = os.path.basename(input_file).split(".")[0] + args.suffix
+    name = os.path.splitext(os.path.basename(input_file))[0] + args.suffix
 
     waveform = super_resolution(
         audiosr,

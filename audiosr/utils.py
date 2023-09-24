@@ -71,6 +71,10 @@ def lowpass_filtering_prepare_inference(dl_output):
     cutoff_freq = (
         _locate_cutoff_freq(dl_output["stft"], percentile=0.985) / 1024
     ) * 24000
+    
+    # If the audio is almost empty. Give up processing
+    if(cutoff_freq < 1000):
+        cutoff_freq = 24000
 
     order = 8
     ftype = np.random.choice(["butter", "cheby1", "ellip", "bessel"])
