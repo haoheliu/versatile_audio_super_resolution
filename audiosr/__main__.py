@@ -23,7 +23,7 @@ def main(args):
         latent_t_per_second=12.8
     )
     
-    save_wave(waveform, args.save_path, name="output", samplerate=48000)
+    save_wave(waveform, args.input_path, args.save_path, name="output", samplerate=48000)
 
 
 if __name__ == "__main__":
