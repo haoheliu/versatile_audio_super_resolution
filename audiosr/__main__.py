@@ -35,12 +35,33 @@ def main(args):
                 latent_t_per_second=args.latent_t_per_second
             )
             save_wave(waveform, output_file, samplerate=args.samplerate)
+    elif args.input_path and args.save_path:  # Check for individual conversion
+        name = os.path.splitext(os.path.basename(args.input_path))[0]
+
+        # Add timestamp to the output filename if the flag is set
+        if args.timestamp:
+            timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+            name += f"_{timestamp}"
+
+        output_file = os.path.join(args.save_path, name + ".wav")
+
+        waveform = super_resolution(
+            audiosr,
+            args.input_path,
+            seed=args.seed,
+            guidance_scale=args.guidance_scale,
+            ddim_steps=args.ddim_steps,
+            latent_t_per_second=args.latent_t_per_second
+        )
+        save_wave(waveform, output_file, samplerate=args.samplerate)
     else:
-        print("Please provide an input file list using -il.")
+        print("Please provide either an input file list using -il or individual input and save paths using -i and -s.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Perform super-resolution on audio files using audiosr package.')
 
+    parser.add_argument('-i', '--input_path', help='Path to the input waveform file.')
+    parser.add_argument('-s', '--save_path', help='Path to save the output waveform file.')
     parser.add_argument('-il', '--input_file_list', help='A file that contains a list of audio files to perform audio super-resolution on.')
     parser.add_argument('--model_name', choices=['basic', 'speech'], default='speech', help='Name of the model to be used.')
     parser.add_argument('-d', '--device', default="auto", help='The device for computation. If not specified, the script will automatically choose the device based on your environment.')
