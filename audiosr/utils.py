@@ -259,7 +259,7 @@ def seed_everything(seed):
 
 
 
-def strip_silence(orignal_path, input_path, output_path):
+def strip_silence(orignal_path, input_path, savepath):
     get_dur = subprocess.run([
         'ffprobe',
         '-v', 'error',
@@ -279,7 +279,7 @@ def strip_silence(orignal_path, input_path, output_path):
         '-i', input_path,
         '-t', duration,
         '-c', 'copy',
-        output_path
+        savepath
     ])
     os.remove(input_path)
 
