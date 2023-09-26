@@ -310,6 +310,10 @@ def save_wave(waveform, savepath, name="outwav", samplerate=16000):
         temp_path = os.path.join(tempfile.gettempdir(), fname)
         print("\033[98m {}\033[00m" .format("Don't forget to try different seeds by setting --seed <int> so that AudioSR can have optimal performance on your hardware."))
         print("Save audio to %s." % path)
+        
+        # Call strip_silence with all required arguments
+        strip_silence(path, path, temp_path)
+        
         sf.write(path, waveform[i, 0], samplerate=samplerate)
         strip_silence(path, temp_path)
 
