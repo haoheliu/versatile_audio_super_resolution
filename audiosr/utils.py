@@ -284,7 +284,7 @@ def strip_silence(orignal_path, input_path, savepath):
     os.remove(input_path)
 
 
-def save_wave(waveform, savepath, name="outwav", samplerate=16000):
+def save_wave(waveform, savepath, name="output", samplerate=48000):
     if type(name) is not list:
         name = [name] * waveform.shape[0]
 
@@ -311,11 +311,10 @@ def save_wave(waveform, savepath, name="outwav", samplerate=16000):
         print("\033[98m {}\033[00m" .format("Don't forget to try different seeds by setting --seed <int> so that AudioSR can have optimal performance on your hardware."))
         print("Save audio to %s." % path)
         
-        # Call strip_silence with all required arguments
+        # Call strip_silence with the correct arguments
         strip_silence(path, path, temp_path)
         
         sf.write(path, waveform[i, 0], samplerate=samplerate)
-        strip_silence(path, temp_path)
 
 def exists(x):
     return x is not None
