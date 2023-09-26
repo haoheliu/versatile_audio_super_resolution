@@ -6,6 +6,9 @@ import torch
 
 from inspect import isfunction
 import os
+import subprocess
+import tempfile
+import json
 import soundfile as sf
 import time
 import wave
@@ -255,6 +258,32 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 
+
+def strip_silence(orignal_path, input_path, output_path):
+    get_dur = subprocess.run([
+        'ffprobe',
+        '-v', 'error',
+        '-select_streams', 'a:0',
+        '-show_entries', 'format=duration',
+        '-sexagesimal',
+        '-of', 'json',
+        orignal_path
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    duration = json.loads(get_dur.stdout)['format']['duration']
+    
+    subprocess.run([
+        'ffmpeg',
+        '-y',
+        '-ss', '00:00:00',
+        '-i', input_path,
+        '-t', duration,
+        '-c', 'copy',
+        output_path
+    ])
+    os.remove(input_path)
+
+
 def save_wave(waveform, savepath, name="outwav", samplerate=16000):
     if type(name) is not list:
         name = [name] * waveform.shape[0]
@@ -278,10 +307,11 @@ def save_wave(waveform, savepath, name="outwav", samplerate=16000):
                 fname = f"{hex(hash(fname))}.wav"
 
         path = os.path.join(savepath, fname)
+        temp_path = os.path.join(tempfile.gettempdir(), fname)
         print("\033[98m {}\033[00m" .format("Don't forget to try different seeds by setting --seed <int> so that AudioSR can have optimal performance on your hardware."))
         print("Save audio to %s." % path)
         sf.write(path, waveform[i, 0], samplerate=samplerate)
-
+        strip_silence(path, temp_path)
 
 def exists(x):
     return x is not None
