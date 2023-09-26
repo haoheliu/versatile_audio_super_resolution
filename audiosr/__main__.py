@@ -3,6 +3,7 @@ import torch
 import logging
 import argparse
 from audiosr import super_resolution, build_model, save_wave, read_list
+from datetime import datetime  # Import datetime module
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +21,14 @@ def main(args):
 
     for input_file in input_files:
         name = os.path.splitext(os.path.basename(input_file))[0]
+
+        # Add timestamp to the output filename if the flag is set
+        if args.timestamp:
+            timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+            name += f"_{timestamp}"
+
+        output_file = os.path.join(args.save_path, name + ".wav")
+
         waveform = super_resolution(
             audiosr,
             input_file,
@@ -28,12 +37,12 @@ def main(args):
             ddim_steps=args.ddim_steps,
             latent_t_per_second=args.latent_t_per_second
         )
-        save_wave(waveform, args.save_path, name=name, samplerate=args.samplerate)
+        save_wave(waveform, output_file, samplerate=args.samplerate)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Perform super-resolution on audio files using audiosr package.')
 
-    parser.add_argument('-i', '--input_path', required=True, help='Path to the input waveform file.')
+    parser.add_argument('-i', '--input_path', help='Path to the input waveform file.')
     parser.add_argument('-s', '--save_path', required=True, help='Path to save the output waveform file.')
     parser.add_argument('--model_name', choices=['basic', 'speech'], default='speech', help='Name of the model to be used.')
     parser.add_argument('-d', '--device', default="auto", help='The device for computation. If not specified, the script will automatically choose the device based on your environment.')
@@ -43,6 +52,9 @@ if __name__ == "__main__":
     parser.add_argument('--input_file_list', '-il', help='A file that contains a list of audio files to perform audio super-resolution on.')
     parser.add_argument('--latent_t_per_second', type=float, default=12.8, help='Latent sampling rate per second.')
     parser.add_argument('--samplerate', type=int, default=48000, help='Samplerate for the output waveform.')
+    
+    # Add a flag to include a timestamp in the output filename
+    parser.add_argument('--timestamp', action='store_true', help='Add timestamp to the output filename.')
 
     args = parser.parse_args()
     main(args)
