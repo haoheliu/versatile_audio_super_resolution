@@ -37,7 +37,7 @@ build:
     - "progressbar==2.5"
     - "ftfy==6.1.1"
     - "timm==0.9.7"
-    - "audiosr==0.0.5"
+    - "audiosr==0.0.6"
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"
