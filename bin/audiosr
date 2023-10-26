@@ -120,4 +120,4 @@ for input_file in files_todo:
         ddim_steps=args.ddim_steps,
         latent_t_per_second=latent_t_per_second
     )
-    save_wave(waveform, save_path, name=name, samplerate=sample_rate)
+    save_wave(waveform, inputpath=input_file, savepath=save_path, name=name, samplerate=sample_rate)
