@@ -22,7 +22,7 @@ Share your thoughts/samples/issues in our discord channel: https://discord.gg/HW
 # Optional
 conda create -n audiosr python=3.9; conda activate audiosr
 # Install AudioLDM
-pip3 install audiosr==0.0.5
+pip3 install audiosr==0.0.6
 ```
 
 ## Usage
