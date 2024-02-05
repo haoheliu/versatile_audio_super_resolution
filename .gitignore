@@ -8,3 +8,4 @@ gradio_cached*
 build*
 *.wav
 dist/
+*DS_Store*
