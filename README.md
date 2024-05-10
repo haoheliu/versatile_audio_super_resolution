@@ -15,6 +15,14 @@ Share your thoughts/samples/issues in our discord channel: https://discord.gg/HW
 - 2023-09-24: Add replicate demo (@nateraw); Fix error on windows, librosa warning etc (@ORI-Muchim).  
 - 2023-09-16: Fix DC shift issue. Fix duration padding bug. Update default DDIM steps to 50.
 
+## Gradio Demo
+
+To run the Gradio demo locally:
+
+1. Install dependencies: `pip install -r requirements.txt` 
+2. Run the app: `python app.py`
+3. Open the URL displayed to view the demo
+
 ## Commandline Usage
 
 ## Installation
