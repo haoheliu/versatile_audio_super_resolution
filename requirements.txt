@@ -7,7 +7,7 @@ torchvision==0.15.2; sys_platform == 'darwin'
 torchaudio==2.0.2+cu118; sys_platform != 'darwin'
 torchaudio==2.0.2; sys_platform == 'darwin'
 huggingface_hub
-transformers==4.30.2
+transformers
 gradio
 soundfile
 progressbar
