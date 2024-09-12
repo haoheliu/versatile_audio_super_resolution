@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 # python3 setup.py sdist bdist_wheel
 """
-@File    :   setup.py.py    
+@File    :   setup.py.py
 @Contact :   haoheliu@gmail.com
 @License :   (C)Copyright 2020-2100
 
@@ -22,7 +22,7 @@ import os
 import sys
 from shutil import rmtree
 
-from setuptools import find_packages, setup, Command
+from setuptools import Command, find_packages, setup
 
 # Package meta-data.
 NAME = "audiosr"
@@ -39,7 +39,6 @@ REQUIRED = [
     "torchaudio>=0.13.0",
     "torchvision>=0.14.0",
     "tqdm",
-    "gradio",
     "pyyaml",
     "einops",
     "chardet",
