@@ -87,10 +87,12 @@ optional arguments:
 ## Cite our work
 If you find this repo useful, please consider citing: 
 ```bibtex
-@article{liu2023audiosr,
-  title={{AudioSR}: Versatile Audio Super-resolution at Scale},
+@inproceedings{liu2024audiosr,
+  title={{AudioSR}: Versatile audio super-resolution at scale},
   author={Liu, Haohe and Chen, Ke and Tian, Qiao and Wang, Wenwu and Plumbley, Mark D},
-  journal={arXiv preprint arXiv:2309.07314},
-  year={2023}
+  booktitle={IEEE International Conference on Acoustics, Speech and Signal Processing},
+  pages={1076--1080},
+  year={2024},
+  organization={IEEE}
 }
 ```
