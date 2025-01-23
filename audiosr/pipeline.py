@@ -140,7 +140,7 @@ def build_model(ckpt_path=None, config=None, device=None, model_name="basic"):
 
     resume_from_checkpoint = ckpt_path
 
-    checkpoint = torch.load(resume_from_checkpoint, map_location=device)
+    checkpoint = torch.load(resume_from_checkpoint, map_location='cpu')
 
     latent_diffusion.load_state_dict(checkpoint["state_dict"], strict=False)
 
