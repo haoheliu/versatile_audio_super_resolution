@@ -12,5 +12,6 @@ gradio
 soundfile
 progressbar
 librosa
+matplotlib
 audiosr
 unidecode
