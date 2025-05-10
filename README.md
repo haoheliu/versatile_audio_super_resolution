@@ -14,6 +14,7 @@ Share your thoughts/samples/issues in our discord channel: https://discord.gg/HW
 ## Change Log
 - 2024-12-31: The training code of AudioSR can be found [here](https://drive.google.com/file/d/1BaZuHbk1AfURX7SvkaD5_ZWLwun-wdpW/view?usp=drive_link) (For reference only. The code is not carefully organized.).
 - 2024-12-16: Add [Important things to know to make AudioSR work](example/how_to_make_audiosr_work.md).
+![demo-failure](example/figs/demo-failure.png)
 - 2023-09-24: Add replicate demo (@nateraw); Fix error on windows, librosa warning etc (@ORI-Muchim).  
 - 2023-09-16: Fix DC shift issue. Fix duration padding bug. Update default DDIM steps to 50.
 
