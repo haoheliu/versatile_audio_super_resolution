@@ -63,11 +63,13 @@ def process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, is_last_chunk=
         # For the last chunk, adjust ddim_steps based on length
         if is_last_chunk:
             chunk_duration = len(chunk) / sr
-            # Scale ddim_steps proportionally for shorter chunks
-            adjusted_ddim_steps = max(10, int(ddim_steps * (chunk_duration / 5.1)))
+            # Scale ddim_steps proportionally for shorter chunks, ensuring it stays within valid bounds
+            # Subtract 2 to ensure we're well within the valid range (0 to ddim_steps-1)
+            max_steps = min(ddim_steps - 2, 998)  # Ensure we never exceed the valid range
+            adjusted_ddim_steps = max(10, min(max_steps, int(ddim_steps * (chunk_duration / 5.1))))
             print(f"Adjusted ddim_steps for last chunk: {adjusted_ddim_steps}")
         else:
-            adjusted_ddim_steps = ddim_steps
+            adjusted_ddim_steps = min(ddim_steps - 2, 998)  # Also bound regular chunks for safety
         
         # Process the chunk
         processed_chunk = super_resolution(
@@ -77,7 +79,7 @@ def process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, is_last_chunk=
             ddim_steps=adjusted_ddim_steps
         )
         
-        result = processed_chunk[0]  # Get first channel if stereo
+        result = processed_chunk  # Keep the result as is, no channel selection
         
         # Normalize the processed chunk's amplitude relative to input chunk
         result = normalize_chunk_amplitude(result, chunk)
@@ -107,33 +109,19 @@ def process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, is_last_chunk=
         except Exception as e:
             print(f"Warning: Could not remove temporary file {temp_path}: {e}")
 
-def inference(audio_file, model_name, guidance_scale, ddim_steps):
-    # Initialize the model
-    audiosr = build_model(model_name=model_name)
-    
-    # Load the audio file
-    audio, sr = librosa.load(audio_file, sr=48000, mono=True)
-    
-    print(f"\nProcessing audio file of length: {len(audio)/sr:.2f} seconds")
-    
+def process_audio_channel(audiosr, audio_channel, sr, guidance_scale, ddim_steps):
+    """Process a single audio channel"""
     # Calculate chunk parameters
     chunk_duration = 5.1  # seconds
     chunk_size = int(chunk_duration * sr)
-    overlap_duration = 0.1  # 100ms overlap
+    overlap_duration = 0.5  # 500ms overlap
     overlap_size = int(overlap_duration * sr)
-    
-    print(f"Chunk duration: {chunk_duration} seconds")
-    print(f"Overlap duration: {overlap_duration} seconds")
-    
-    # Create temporary directory if it doesn't exist
-    temp_dir = os.path.join(os.getcwd(), "temp_audio")
-    os.makedirs(temp_dir, exist_ok=True)
     
     # Process audio in chunks
     processed_chunks = []
     
     # Calculate number of chunks
-    total_samples = len(audio)
+    total_samples = len(audio_channel)
     num_chunks = int(np.ceil(total_samples / (chunk_size - overlap_size)))
     
     print(f"Total chunks to process: {num_chunks}")
@@ -148,7 +136,7 @@ def inference(audio_file, model_name, guidance_scale, ddim_steps):
         print(f"Chunk size: {(end-start)/sr:.2f} seconds")
         
         # Extract chunk
-        chunk = audio[start:end]
+        chunk = audio_channel[start:end]
         
         # Check if this is the last chunk
         is_last_chunk = (i == num_chunks - 1)
@@ -163,25 +151,30 @@ def inference(audio_file, model_name, guidance_scale, ddim_steps):
             processed_chunk = process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, 
                                          is_last_chunk=False)
         
-        # Ensure processed chunk is 1D
-        if len(processed_chunk.shape) > 1:
-            processed_chunk = processed_chunk.flatten()
+        # Ensure processed chunk is 2D by removing any singleton dimensions
+        processed_chunk = np.squeeze(processed_chunk)
+        if len(processed_chunk.shape) == 1:
+            processed_chunk = processed_chunk.reshape(1, -1)
         
         # Apply crossfade for overlapping regions (except for first chunk)
         if i > 0:
             print(f"Applying crossfade with previous chunk (overlap: {overlap_duration}s)")
             
             # Calculate the actual overlap size based on the processed chunk size
-            scale_factor = len(processed_chunk) / len(chunk)
+            scale_factor = processed_chunk.shape[1] / len(chunk)
             actual_overlap_size = int(overlap_size * scale_factor)
             
             # Create fade curves with the correct size
             fade_in = np.linspace(0, 1, actual_overlap_size)
             fade_out = np.linspace(1, 0, actual_overlap_size)
             
+            # Reshape fade curves to match the processed chunk dimensions
+            fade_in = fade_in.reshape(1, -1)
+            fade_out = fade_out.reshape(1, -1)
+            
             # Get the overlapping regions
-            current_overlap = processed_chunk[:actual_overlap_size]
-            previous_overlap = processed_chunks[-1][-actual_overlap_size:]
+            current_overlap = processed_chunk[:, :actual_overlap_size]
+            previous_overlap = processed_chunks[-1][:, -actual_overlap_size:]
             
             # Calculate average RMS of the overlapping regions
             current_rms = np.sqrt(np.mean(np.square(current_overlap)))
@@ -193,24 +186,80 @@ def inference(audio_file, model_name, guidance_scale, ddim_steps):
                 fade_in = fade_in * rms_ratio
             
             # Apply crossfade
-            processed_chunk[:actual_overlap_size] *= fade_in
-            processed_chunks[-1][-actual_overlap_size:] *= fade_out
+            processed_chunk[:, :actual_overlap_size] *= fade_in
+            processed_chunks[-1][:, -actual_overlap_size:] *= fade_out
             
             # Add overlapping regions
-            processed_chunks[-1][-actual_overlap_size:] += processed_chunk[:actual_overlap_size]
-            processed_chunk = processed_chunk[actual_overlap_size:]
+            processed_chunks[-1][:, -actual_overlap_size:] += processed_chunk[:, :actual_overlap_size]
+            processed_chunk = processed_chunk[:, actual_overlap_size:]
         
         processed_chunks.append(processed_chunk)
         print(f"Chunk {i+1} processed successfully")
         print(f"Processed chunk shape: {processed_chunk.shape}")
     
-    # Concatenate all processed chunks
+    # Concatenate all processed chunks along the time axis (axis=1)
     print("\nConcatenating processed chunks...")
-    final_audio = np.concatenate(processed_chunks)
+    return np.concatenate(processed_chunks, axis=1)
+
+def normalize_audio(audio):
+    """Normalize audio to be within [-1, 1] range"""
+    max_val = np.max(np.abs(audio))
+    if max_val > 0:
+        return audio / max_val
+    return audio
+
+def convert_audio_for_gradio(audio):
+    """Convert audio to the format expected by Gradio"""
+    # Ensure audio is in float32 format
+    audio = audio.astype(np.float32)
+    # Normalize to [-1, 1] range
+    audio = normalize_audio(audio)
+    # Transpose to (samples, channels) format if needed
+    if audio.shape[0] == 2:  # If first dimension is channels
+        audio = audio.T
+    return audio
+
+def inference(audio_file, model_name, guidance_scale, ddim_steps):
+    # Initialize the model
+    audiosr = build_model(model_name=model_name)
     
-    print(f"Final audio length: {len(final_audio)/sr:.2f} seconds")
+    # Load the audio file with original number of channels
+    audio, sr = librosa.load(audio_file, sr=48000, mono=False)
+    
+    # Convert to stereo if mono
+    if len(audio.shape) == 1:
+        audio = np.stack([audio, audio])
+    
+    print(f"\nProcessing audio file of length: {audio.shape[1]/sr:.2f} seconds")
+    print(f"Number of channels: {audio.shape[0]}")
+    
+    # Process each channel separately
+    processed_channels = []
+    for channel_idx in range(audio.shape[0]):
+        print(f"\nProcessing channel {channel_idx + 1}")
+        channel_audio = audio[channel_idx]
+        processed_channel = process_audio_channel(audiosr, channel_audio, sr, guidance_scale, ddim_steps)
+        # Ensure the channel is 1D
+        processed_channel = processed_channel.squeeze()
+        processed_channels.append(processed_channel)
+    
+    # Stack channels for stereo output (shape will be [2, samples])
+    if len(processed_channels[0].shape) > 1:
+        # If channels are 2D, take the first row
+        processed_channels = [channel[0] if len(channel.shape) > 1 else channel for channel in processed_channels]
+    
+    final_audio = np.stack(processed_channels)
+    
+    # Convert audio to the format expected by Gradio
+    final_audio = convert_audio_for_gradio(final_audio)
+    
+    print(f"Final audio shape: {final_audio.shape}")
+    print(f"Final audio length: {final_audio.shape[0]/sr:.2f} seconds")
+    print(f"Audio value range: [{final_audio.min():.3f}, {final_audio.max():.3f}]")
+    print(f"Audio dtype: {final_audio.dtype}")
     
     # Clean up temporary directory
+    temp_dir = os.path.join(os.getcwd(), "temp_audio")
     try:
         for file in os.listdir(temp_dir):
             os.remove(os.path.join(temp_dir, file))
@@ -225,8 +274,8 @@ iface = gr.Interface(
     inputs=[
         gr.Audio(type="filepath", label="Input Audio"),
         gr.Dropdown(["basic", "speech"], value="basic", label="Model"),
-        gr.Slider(1, 10, value=3.5, step=0.1, label="Guidance Scale"),  
-        gr.Slider(1, 100, value=50, step=1, label="DDIM Steps")
+        gr.Slider(1, 10, value=2.6, step=0.1, label="Guidance Scale"),  
+        gr.Slider(1, 100, value=100, step=1, label="DDIM Steps")
     ],
     outputs=gr.Audio(type="numpy", label="Output Audio"),
     title="AudioSR",
