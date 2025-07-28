@@ -25,7 +25,7 @@ LSD = sqrt(mean((log10(target² / (estimate² + ε)) + ε)²))
 - **Improves Fairness**: Provides more meaningful comparisons for audio quality assessment
 
 ### The Scaling Approach
-We scale the target spectrogram so that its lower 10% frequency energy matches the ground truth (because we assume the lower frequencies information does not need to change before and after super-resolution operation):
+We scale the target spectrogram so that its lower 10% frequency energy matches the ground truth (**because we assume the lower frequencies information does not need to change before and after super-resolution operation**):
 
 ```python
 scaling_factor = gt_lower_energy / target_lower_energy
