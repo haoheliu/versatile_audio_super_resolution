@@ -6,7 +6,7 @@ This file demonstrates the importance of energy scaling when calculating Log Spe
 
 Log Spectral Distance is a commonly used metric for evaluating audio quality and similarity. However, when comparing audio signals with different energy levels, the raw LSD calculation can be biased by these energy differences rather than focusing on the actual spectral characteristics.
 
-This project implements a **frequency energy unification** approach that scales the target audio's lower frequency energy to match the ground truth, ensuring a fair comparison based on spectral shape rather than overall energy levels.
+This file demonstrate the implementation of a **frequency energy unification** approach that scales the super-resolution output audio's lower frequency energy to match the ground truth, ensuring a fair comparison based on spectral shape rather than overall energy levels.
 
 ## Key Concepts
 
