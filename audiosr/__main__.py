@@ -2,7 +2,7 @@
 import os
 import torch
 import logging
-from audiosr import super_resolution, build_model, save_wave, get_time, read_list
+from audiosr import super_resolution, super_resolution_long_audio, build_model, save_wave, get_time, read_list
 import argparse
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -88,6 +88,27 @@ parser.add_argument(
     default="_AudioSR_Processed_48K",
 )
 
+parser.add_argument(
+    "--chunking",
+    action="store_true",
+    help="Enable chunking for long audio files.",
+)
+
+parser.add_argument(
+    "--chunk_duration",
+    type=int,
+    default=15,
+    help="Chunk duration in seconds for long audio processing.",
+)
+
+parser.add_argument(
+    "--overlap_duration",
+    type=int,
+    default=2,
+    help="Overlap duration in seconds for long audio processing.",
+)
+
+
 args = parser.parse_args()
 torch.set_float32_matmul_precision("high")
 save_path = os.path.join(args.save_path, get_time())
@@ -112,12 +133,23 @@ else:
 for input_file in files_todo:
     name = os.path.splitext(os.path.basename(input_file))[0] + args.suffix
 
-    waveform = super_resolution(
-        audiosr,
-        input_file,
-        seed=random_seed,
-        guidance_scale=guidance_scale,
-        ddim_steps=args.ddim_steps,
-        latent_t_per_second=latent_t_per_second
-    )
+    if args.chunking:
+        waveform = super_resolution_long_audio(
+            audiosr,
+            input_file,
+            seed=random_seed,
+            guidance_scale=guidance_scale,
+            ddim_steps=args.ddim_steps,
+            chunk_duration_s=args.chunk_duration,
+            overlap_duration_s=args.overlap_duration,
+        )
+    else:
+        waveform = super_resolution(
+            audiosr,
+            input_file,
+            seed=random_seed,
+            guidance_scale=guidance_scale,
+            ddim_steps=args.ddim_steps,
+            latent_t_per_second=latent_t_per_second
+        )
     save_wave(waveform, inputpath=input_file, savepath=save_path, name=name, samplerate=sample_rate)
