@@ -311,7 +311,13 @@ def save_wave(waveform, inputpath, savepath, name="outwav", samplerate=16000):
         temp_path = os.path.join(tempfile.gettempdir(), fname)
         print("\033[98m {}\033[00m" .format("Don't forget to try different seeds by setting --seed <int> so that AudioSR can have optimal performance on your hardware."))
         print("Save audio to %s." % save_path)
-        sf.write(temp_path, waveform[i, 0], samplerate=samplerate)
+        
+        # Reshape waveform for soundfile
+        data_to_save = waveform[i].T.cpu().numpy()
+        if data_to_save.ndim == 1:
+            data_to_save = data_to_save[:, np.newaxis]
+
+        sf.write(temp_path, data_to_save, samplerate=samplerate)
         strip_silence(inputpath, temp_path, save_path)
 
 
