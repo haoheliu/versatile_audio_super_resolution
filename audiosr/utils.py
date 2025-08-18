@@ -309,11 +309,20 @@ def save_wave(waveform, inputpath, savepath, name="outwav", samplerate=16000):
 
         save_path = os.path.join(savepath, fname)
         temp_path = os.path.join(tempfile.gettempdir(), fname)
+        # Ensure the out file ends with .wav
+        if not temp_path.endswith('.wav'):
+            temp_path += '.wav'
+        if not save_path.endswith('.wav'):
+            save_path += '.wav'
+
         print("\033[98m {}\033[00m" .format("Don't forget to try different seeds by setting --seed <int> so that AudioSR can have optimal performance on your hardware."))
         print("Save audio to %s." % save_path)
         
         # Reshape waveform for soundfile
-        data_to_save = waveform[i].T.cpu().numpy()
+        if isinstance(waveform[i], torch.Tensor):
+            data_to_save = waveform[i].T.cpu().numpy()
+        else:
+            data_to_save = waveform[i].T
         if data_to_save.ndim == 1:
             data_to_save = data_to_save[:, np.newaxis]
 
