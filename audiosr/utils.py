@@ -313,7 +313,10 @@ def save_wave(waveform, inputpath, savepath, name="outwav", samplerate=16000):
         print("Save audio to %s." % save_path)
         
         # Reshape waveform for soundfile
-        data_to_save = waveform[i].T.cpu().numpy()
+        if isinstance(waveform[i], torch.Tensor):
+            data_to_save = waveform[i].T.cpu().numpy()
+        else:
+            data_to_save = waveform[i].T
         if data_to_save.ndim == 1:
             data_to_save = data_to_save[:, np.newaxis]
 
