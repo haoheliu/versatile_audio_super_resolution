@@ -138,7 +138,7 @@ def round_up_duration(duration):
     return int(round(duration / 2.5) + 1) * 2.5
 
 
-def build_model(ckpt_path=None, config=None, device=None, model_name="basic"):
+def build_model(ckpt_path=None, config=None, device=None, model_name="basic", use_safetensors=True):
     if device is None or device == "auto":
         if torch.cuda.is_available():
             device = torch.device("cuda:0")
@@ -149,8 +149,10 @@ def build_model(ckpt_path=None, config=None, device=None, model_name="basic"):
 
     print("Loading AudioSR: %s" % model_name)
     print("Loading model on %s" % device)
-
-    ckpt_path = download_checkpoint(model_name)
+    
+    # If user provided a specific path, use it. Otherwise, download/find based on name.
+    if ckpt_path is None:
+        ckpt_path = download_checkpoint(model_name, use_safetensors=use_safetensors)
 
     if config is not None:
         assert type(config) is str
@@ -165,11 +167,15 @@ def build_model(ckpt_path=None, config=None, device=None, model_name="basic"):
     # No normalization here
     latent_diffusion = LatentDiffusion(**config["model"]["params"])
 
-    resume_from_checkpoint = ckpt_path
-
-    checkpoint = torch.load(resume_from_checkpoint, map_location='cpu')
-
-    latent_diffusion.load_state_dict(checkpoint["state_dict"], strict=False)
+    # Load weights
+    print(f"Loading weights from {ckpt_path}")
+    if ckpt_path.endswith(".safetensors"):
+        from safetensors.torch import load_file
+        state_dict = load_file(ckpt_path)
+        latent_diffusion.load_state_dict(state_dict, strict=False)
+    else:
+        checkpoint = torch.load(ckpt_path, map_location='cpu')
+        latent_diffusion.load_state_dict(checkpoint["state_dict"], strict=False)
 
     latent_diffusion.eval()
     latent_diffusion = latent_diffusion.to(device)

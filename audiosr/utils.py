@@ -382,21 +382,83 @@ class MyProgressBar:
             self.pbar.finish()
 
 
-def download_checkpoint(checkpoint_name="basic"):
+def convert_bin_to_safetensors(bin_path, safe_path):
+    """Convert a pytorch_model.bin file to model.safetensors."""
+    print(f"Converting {bin_path} to {safe_path}...")
+    try:
+        import safetensors.torch
+        checkpoint = torch.load(bin_path, map_location="cpu")
+        if "state_dict" in checkpoint:
+            state_dict = checkpoint["state_dict"]
+        else:
+            state_dict = checkpoint
+        
+        # Ensure all tensors are contiguous
+        for k, v in state_dict.items():
+            if isinstance(v, torch.Tensor):
+                state_dict[k] = v.contiguous()
+            
+        safetensors.torch.save_file(state_dict, safe_path)
+        print(f"Conversion successful: {safe_path}")
+        return True
+    except Exception as e:
+        print(f"Error converting model: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def download_checkpoint(checkpoint_name="basic", use_safetensors=True):
+    model_id = None
     if checkpoint_name == "basic":
         model_id = "haoheliu/audiosr_basic"
-
-        checkpoint_path = hf_hub_download(
-            repo_id=model_id, filename="pytorch_model.bin"
-        )
     elif checkpoint_name == "speech":
         model_id = "haoheliu/audiosr_speech"
-
-        checkpoint_path = hf_hub_download(
-            repo_id=model_id, filename="pytorch_model.bin"
-        )
     else:
         raise ValueError("Invalid Model Name %s" % checkpoint_name)
+    
+    if use_safetensors:
+        # 1. Try to find local/cached safetensors first or download if available on HF
+        try:
+            print(f"Attempting to download/locate safetensors for {model_id}...")
+            checkpoint_path = hf_hub_download(
+                repo_id=model_id, filename="model.safetensors"
+            )
+            return checkpoint_path
+        except Exception:
+            print(f"Native safetensors not found on HF for {model_id}. Checking local conversion...")
+            
+            # 2. Check if we have a locally converted copy in the HF cache dir structure
+            # We'll use the bin file path to determine where to put the safe file
+            try:
+                # First, ensure we have the bin file to know where the cache is
+                bin_path = hf_hub_download(
+                    repo_id=model_id, filename="pytorch_model.bin"
+                )
+                
+                # Construct parallel safetensors path
+                # bin_path usually looks like .../snapshots/<hash>/pytorch_model.bin
+                safe_path = bin_path.replace("pytorch_model.bin", "model.safetensors")
+                
+                if os.path.exists(safe_path):
+                    print(f"Found locally converted safetensors: {safe_path}")
+                    return safe_path
+                
+                # 3. Fallback & Convert
+                print(f"Local safetensors not found. Converting {bin_path}...")
+                if convert_bin_to_safetensors(bin_path, safe_path):
+                    return safe_path
+                else:
+                    print("Conversion failed. Falling back to bin.")
+            except Exception as e:
+                print(f"Error during fallback/conversion process: {e}")
+                # If bin download fails too, we really have a problem, but we'll let the final fallback catch it
+                pass
+
+    # Final Fallback: Use the binary model directly
+    print(f"Using legacy binary model for {model_id}")
+    checkpoint_path = hf_hub_download(
+        repo_id=model_id, filename="pytorch_model.bin"
+    )
     return checkpoint_path
 
 
