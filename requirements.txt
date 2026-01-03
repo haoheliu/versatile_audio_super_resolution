@@ -1,13 +1,10 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
 git+https://github.com/huggingface/diffusers.git
-torch==2.0.1+cu118; sys_platform != 'darwin'
-torch==2.0.1; sys_platform == 'darwin'
-torchvision==0.15.2+cu118; sys_platform != 'darwin'
-torchvision==0.15.2; sys_platform == 'darwin'
-torchaudio==2.0.2+cu118; sys_platform != 'darwin'
-torchaudio==2.0.2; sys_platform == 'darwin'
+torch>=2.0.1
+torchvision>=0.15.2
+torchaudio>=2.0.2
 huggingface_hub
-transformers==4.30.2
+transformers>=4.30.2
 gradio
 soundfile
 progressbar

@@ -1,28 +1,10 @@
 import gradio as gr
 import numpy as np
 import librosa
-from audiosr import super_resolution, build_model
-import tempfile
-import soundfile as sf
+import torch
+from audiosr import build_model
+from audiosr.pipeline import super_resolution_from_waveform, super_resolution_batch
 import os
-
-def detect_audio_end(audio, sr, window_size=2048, hop_length=512, threshold_db=-50):
-    """Detect the end of actual audio content using RMS energy"""
-    # Calculate RMS energy
-    rms = librosa.feature.rms(y=audio, frame_length=window_size, hop_length=hop_length)[0]
-    
-    # Convert to dB
-    db = librosa.amplitude_to_db(rms, ref=np.max)
-    
-    # Find the last frame above threshold
-    valid_frames = np.where(db > threshold_db)[0]
-    
-    if len(valid_frames) > 0:
-        last_frame = valid_frames[-1]
-        # Convert frame index to sample index
-        last_sample = (last_frame + 1) * hop_length
-        return last_sample
-    return len(audio)
 
 def calculate_amplitude_stats(audio):
     """Calculate amplitude statistics for audio normalization"""
@@ -48,139 +30,159 @@ def normalize_chunk_amplitude(processed_chunk, original_chunk):
     
     return processed_chunk * scale_factor
 
-def process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, is_last_chunk=False, target_length=None):
-    # Create a temporary directory in the current working directory
-    temp_dir = os.path.join(os.getcwd(), "temp_audio")
-    os.makedirs(temp_dir, exist_ok=True)
+
+def process_chunks_batch(audiosr, chunks, original_lengths, sr, guidance_scale, ddim_steps):
+    """
+    Process multiple chunks in a single GPU batch.
     
-    # Create a unique temporary file path
-    temp_path = os.path.join(temp_dir, f"chunk_{np.random.randint(0, 1000000)}.wav")
+    Args:
+        audiosr: The model
+        chunks: List of numpy arrays (audio chunks)
+        original_lengths: List of original lengths
+        sr: Sample rate
+        guidance_scale: Guidance scale
+        ddim_steps: DDIM steps
+        
+    Returns:
+        List of processed chunks as numpy arrays
+    """
+    adjusted_ddim_steps = min(ddim_steps - 2, 998)
     
-    try:
-        # Save chunk to temporary file
-        sf.write(temp_path, chunk, sr)
-        
-        # For the last chunk, adjust ddim_steps based on length
-        if is_last_chunk:
-            chunk_duration = len(chunk) / sr
-            # Scale ddim_steps proportionally for shorter chunks, ensuring it stays within valid bounds
-            # Subtract 2 to ensure we're well within the valid range (0 to ddim_steps-1)
-            max_steps = min(ddim_steps - 2, 998)  # Ensure we never exceed the valid range
-            adjusted_ddim_steps = max(10, min(max_steps, int(ddim_steps * (chunk_duration / 5.1))))
-            print(f"Adjusted ddim_steps for last chunk: {adjusted_ddim_steps}")
-        else:
-            adjusted_ddim_steps = min(ddim_steps - 2, 998)  # Also bound regular chunks for safety
-        
-        # Process the chunk
-        processed_chunk = super_resolution(
+    # Use batch processing for true GPU parallelism
+    processed_list = super_resolution_batch(
             audiosr,
-            temp_path,
+        chunks,
             guidance_scale=guidance_scale,
             ddim_steps=adjusted_ddim_steps
         )
         
-        result = processed_chunk  # Keep the result as is, no channel selection
-        
-        # Normalize the processed chunk's amplitude relative to input chunk
-        result = normalize_chunk_amplitude(result, chunk)
-        
-        # For the last chunk, ensure the output length matches the input length
-        if is_last_chunk and target_length is not None:
-            # Calculate the scale factor between input and output
-            scale_factor = len(result) / len(chunk)
-            target_output_length = int(target_length * scale_factor)
+    # Normalize amplitude for each result
+    results = []
+    for i, (processed, chunk, orig_len) in enumerate(zip(processed_list, chunks, original_lengths)):
+        result = normalize_chunk_amplitude(processed, chunk)
+        result = np.squeeze(result)
+        if len(result) > orig_len:
+            result = result[:orig_len]
+        results.append(result)
+    
+    return results
+
+
+def process_chunk_direct(audiosr, chunk, original_length, sr, guidance_scale, ddim_steps):
+    """
+    Process a single chunk directly without saving to file.
+    """
+    adjusted_ddim_steps = min(ddim_steps - 2, 998)
             
-            # Find the actual end of audio content
-            audio_end = detect_audio_end(result, sr)
-            
-            # Use the minimum of detected end and target length
-            end_point = min(audio_end, target_output_length)
-            result = result[:end_point]
-            
-            print(f"Adjusted last chunk length from {len(result)} to {end_point} samples")
+    # Process chunk directly (no file I/O)
+    processed = super_resolution_from_waveform(
+        audiosr,
+        chunk,
+        guidance_scale=guidance_scale,
+        ddim_steps=adjusted_ddim_steps
+    )
+    
+    # Normalize amplitude
+    result = normalize_chunk_amplitude(processed, chunk)
+    
+    # Trim to original length
+    result = np.squeeze(result)
+    if len(result) > original_length:
+        result = result[:original_length]
         
         return result
     
-    finally:
-        # Clean up: remove the temporary file
-        try:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        except Exception as e:
-            print(f"Warning: Could not remove temporary file {temp_path}: {e}")
 
-def process_audio_channel(audiosr, audio_channel, sr, guidance_scale, ddim_steps):
-    """Process a single audio channel"""
+def process_audio_channel(audiosr, audio_channel, sr, guidance_scale, ddim_steps, batch_size=1):
+    """Process a single audio channel with optional batch processing"""
     # Calculate chunk parameters
     chunk_duration = 5.1  # seconds
     chunk_size = int(chunk_duration * sr)
     overlap_duration = 0.5  # 500ms overlap
     overlap_size = int(overlap_duration * sr)
     
-    # Process audio in chunks
-    processed_chunks = []
-    
     # Calculate number of chunks
     total_samples = len(audio_channel)
     num_chunks = int(np.ceil(total_samples / (chunk_size - overlap_size)))
     
-    print(f"Total chunks to process: {num_chunks}")
+    print(f"Total chunks to process: {num_chunks}, batch_size: {batch_size}")
+    
+    # Collect all chunks and their metadata
+    all_chunks = []
+    all_orig_lens = []
+    chunk_positions = []  # (start, end) for each chunk
     
     for i in range(num_chunks):
-        # Calculate chunk boundaries
         start = i * (chunk_size - overlap_size)
         end = min(start + chunk_size, total_samples)
-        
-        print(f"\nProcessing chunk {i+1}/{num_chunks} with Audio Super Resolution")
-        print(f"Chunk time range: {start/sr:.2f}s to {end/sr:.2f}s of total {total_samples/sr:.2f}s")
-        print(f"Chunk size: {(end-start)/sr:.2f} seconds")
-        
-        # Extract chunk
         chunk = audio_channel[start:end]
         
-        # Check if this is the last chunk
-        is_last_chunk = (i == num_chunks - 1)
+        all_chunks.append(chunk)
+        all_orig_lens.append(len(chunk))
+        chunk_positions.append((start, end))
+    
+    # Process chunks in batches
+    processed_results = []
+    
+    if batch_size > 1:
+        # True GPU batch processing
+        num_batches = int(np.ceil(num_chunks / batch_size))
         
-        # Process chunk
-        # For last chunk, pass the actual remaining length
-        if is_last_chunk:
-            remaining_samples = total_samples - start
-            processed_chunk = process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, 
-                                         is_last_chunk=True, target_length=remaining_samples)
+        for batch_idx in range(num_batches):
+            batch_start = batch_idx * batch_size
+            batch_end = min(batch_start + batch_size, num_chunks)
+            
+            batch_chunks = all_chunks[batch_start:batch_end]
+            batch_orig_lens = all_orig_lens[batch_start:batch_end]
+            
+            print(f"\nBatch {batch_idx + 1}/{num_batches}: Processing chunks {batch_start + 1}-{batch_end}/{num_chunks}")
+            for j, (start, end) in enumerate(chunk_positions[batch_start:batch_end]):
+                print(f"  Chunk {batch_start + j + 1}: {start/sr:.2f}s - {end/sr:.2f}s")
+            
+            # Process batch
+            batch_results = process_chunks_batch(
+                audiosr, batch_chunks, batch_orig_lens, sr, guidance_scale, ddim_steps
+            )
+            processed_results.extend(batch_results)
+            
+            # Clean up GPU memory between batches
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         else:
-            processed_chunk = process_chunk(audiosr, chunk, sr, guidance_scale, ddim_steps, 
-                                         is_last_chunk=False)
+        # Sequential processing (fallback)
+        for i, (chunk, orig_len, (start, end)) in enumerate(zip(all_chunks, all_orig_lens, chunk_positions)):
+            print(f"\nChunk {i+1}/{num_chunks}: {start/sr:.2f}s - {end/sr:.2f}s ({(end-start)/sr:.2f}s)")
+            
+            result = process_chunk_direct(
+                audiosr, chunk, orig_len, sr, guidance_scale, ddim_steps
+            )
+            processed_results.append(result)
         
-        # Ensure processed chunk is 2D by removing any singleton dimensions
-        processed_chunk = np.squeeze(processed_chunk)
+    # Apply crossfade and concatenate
+    processed_chunks = []
+    for i, result in enumerate(processed_results):
+        # Ensure processed chunk is 2D
+        processed_chunk = np.squeeze(result)
         if len(processed_chunk.shape) == 1:
             processed_chunk = processed_chunk.reshape(1, -1)
         
         # Apply crossfade for overlapping regions (except for first chunk)
         if i > 0:
-            print(f"Applying crossfade with previous chunk (overlap: {overlap_duration}s)")
+            actual_overlap_size = overlap_size
+            actual_overlap_size = min(actual_overlap_size, processed_chunk.shape[1], processed_chunks[-1].shape[1])
             
-            # Calculate the actual overlap size based on the processed chunk size
-            scale_factor = processed_chunk.shape[1] / len(chunk)
-            actual_overlap_size = int(overlap_size * scale_factor)
+            # Create fade curves
+            fade_in = np.linspace(0, 1, actual_overlap_size).reshape(1, -1)
+            fade_out = np.linspace(1, 0, actual_overlap_size).reshape(1, -1)
             
-            # Create fade curves with the correct size
-            fade_in = np.linspace(0, 1, actual_overlap_size)
-            fade_out = np.linspace(1, 0, actual_overlap_size)
-            
-            # Reshape fade curves to match the processed chunk dimensions
-            fade_in = fade_in.reshape(1, -1)
-            fade_out = fade_out.reshape(1, -1)
-            
-            # Get the overlapping regions
+            # Get overlapping regions
             current_overlap = processed_chunk[:, :actual_overlap_size]
             previous_overlap = processed_chunks[-1][:, -actual_overlap_size:]
             
-            # Calculate average RMS of the overlapping regions
+            # Adjust fade curves based on RMS ratio
             current_rms = np.sqrt(np.mean(np.square(current_overlap)))
             previous_rms = np.sqrt(np.mean(np.square(previous_overlap)))
             
-            # Adjust fade curves based on RMS ratio to maintain energy consistency
             if current_rms > 0 and previous_rms > 0:
                 rms_ratio = np.sqrt(previous_rms / current_rms)
                 fade_in = fade_in * rms_ratio
@@ -188,17 +190,12 @@ def process_audio_channel(audiosr, audio_channel, sr, guidance_scale, ddim_steps
             # Apply crossfade
             processed_chunk[:, :actual_overlap_size] *= fade_in
             processed_chunks[-1][:, -actual_overlap_size:] *= fade_out
-            
-            # Add overlapping regions
             processed_chunks[-1][:, -actual_overlap_size:] += processed_chunk[:, :actual_overlap_size]
             processed_chunk = processed_chunk[:, actual_overlap_size:]
         
         processed_chunks.append(processed_chunk)
-        print(f"Chunk {i+1} processed successfully")
-        print(f"Processed chunk shape: {processed_chunk.shape}")
     
-    # Concatenate all processed chunks along the time axis (axis=1)
-    print("\nConcatenating processed chunks...")
+    print(f"\nConcatenating {len(processed_chunks)} processed chunks...")
     return np.concatenate(processed_chunks, axis=1)
 
 def normalize_audio(audio):
@@ -219,9 +216,53 @@ def convert_audio_for_gradio(audio):
         audio = audio.T
     return audio
 
-def inference(audio_file, model_name, guidance_scale, ddim_steps):
+def warmup_model(audiosr, ddim_steps):
+    """
+    Warmup the model with a single dummy chunk to trigger CUDA kernel compilation.
+    This prevents memory spikes during actual batch processing.
+    
+    Optimizations:
+    - Use short 2-second audio (reduces memory usage during warmup)
+    - Use only 10 DDIM steps (enough to compile all kernels, faster warmup)
+    """
+    print("\n" + "="*50)
+    print("Warming up model (triggering CUDA kernel compilation)...")
+    print("="*50)
+    
+    # Create a short 2-second dummy waveform to minimize memory usage
+    # (NOT exactly 5.12s multiple to ensure padding logic triggers correctly)
+    dummy_duration = 2.0
+    dummy_sr = 48000
+    dummy_waveform = np.zeros(int(dummy_duration * dummy_sr), dtype=np.float32)
+    
+    # Add small noise to create realistic audio signal (avoids numerical edge cases)
+    dummy_waveform += np.random.randn(len(dummy_waveform)).astype(np.float32) * 0.01
+    
+    # Use minimal DDIM steps - only need to trigger kernel compilation, not quality output
+    warmup_ddim_steps = 10  # Much faster than full ddim_steps, still compiles all kernels
+    
+    _ = super_resolution_from_waveform(
+        audiosr,
+        dummy_waveform,
+        guidance_scale=2.5,
+        ddim_steps=warmup_ddim_steps
+    )
+    
+    # Clear GPU cache after warmup to free temporary memory
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    print("Warmup complete!")
+    
+    print("Warmup complete! Model is ready for batch processing.\n")
+
+
+def inference(audio_file, model_name, guidance_scale, ddim_steps, batch_size):
     # Initialize the model
     audiosr = build_model(model_name=model_name)
+    
+    # Warmup model to trigger CUDA kernel compilation (prevents memory spikes during batch processing)
+    warmup_model(audiosr, ddim_steps)
     
     # Load the audio file with original number of channels
     audio, sr = librosa.load(audio_file, sr=48000, mono=False)
@@ -232,13 +273,18 @@ def inference(audio_file, model_name, guidance_scale, ddim_steps):
     
     print(f"\nProcessing audio file of length: {audio.shape[1]/sr:.2f} seconds")
     print(f"Number of channels: {audio.shape[0]}")
+    print(f"Batch size: {batch_size}")
     
     # Process each channel separately
     processed_channels = []
     for channel_idx in range(audio.shape[0]):
-        print(f"\nProcessing channel {channel_idx + 1}")
+        print(f"\n{'='*50}")
+        print(f"Processing channel {channel_idx + 1}/{audio.shape[0]}")
+        print(f"{'='*50}")
         channel_audio = audio[channel_idx]
-        processed_channel = process_audio_channel(audiosr, channel_audio, sr, guidance_scale, ddim_steps)
+        processed_channel = process_audio_channel(
+            audiosr, channel_audio, sr, guidance_scale, ddim_steps, batch_size
+        )
         # Ensure the channel is 1D
         processed_channel = processed_channel.squeeze()
         processed_channels.append(processed_channel)
@@ -253,19 +299,10 @@ def inference(audio_file, model_name, guidance_scale, ddim_steps):
     # Convert audio to the format expected by Gradio
     final_audio = convert_audio_for_gradio(final_audio)
     
-    print(f"Final audio shape: {final_audio.shape}")
+    print(f"\nFinal audio shape: {final_audio.shape}")
     print(f"Final audio length: {final_audio.shape[0]/sr:.2f} seconds")
     print(f"Audio value range: [{final_audio.min():.3f}, {final_audio.max():.3f}]")
     print(f"Audio dtype: {final_audio.dtype}")
-    
-    # Clean up temporary directory
-    temp_dir = os.path.join(os.getcwd(), "temp_audio")
-    try:
-        for file in os.listdir(temp_dir):
-            os.remove(os.path.join(temp_dir, file))
-        os.rmdir(temp_dir)
-    except Exception as e:
-        print(f"Warning: Could not clean up temporary directory: {e}")
     
     return (48000, final_audio)
 
@@ -275,15 +312,12 @@ iface = gr.Interface(
         gr.Audio(type="filepath", label="Input Audio"),
         gr.Dropdown(["basic", "speech"], value="basic", label="Model"),
         gr.Slider(1, 10, value=2.6, step=0.1, label="Guidance Scale"),  
-        gr.Slider(1, 100, value=100, step=1, label="DDIM Steps")
+        gr.Slider(1, 100, value=100, step=1, label="DDIM Steps"),
+        gr.Slider(1, 8, value=2, step=1, label="Batch Size (并行处理chunk数)")
     ],
     outputs=gr.Audio(type="numpy", label="Output Audio"),
-    title="AudioSR",
-    description="Audio Super Resolution with AudioSR"
+    title="AudioSR - Audio Super Resolution",
+    description="音频超分辨率处理。支持GPU批量并行处理多个音频chunk，加速长音频处理。Batch Size > 1 启用真正的GPU并行。"
 )
-
-# Create temp directory on startup
-temp_dir = os.path.join(os.getcwd(), "temp_audio")
-os.makedirs(temp_dir, exist_ok=True)
 
 iface.launch()

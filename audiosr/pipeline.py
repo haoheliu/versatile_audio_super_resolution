@@ -4,6 +4,7 @@ import re
 import yaml
 import torch
 import torchaudio
+import soundfile as sf
 import numpy as np
 import torch.nn.functional as F
 import gc
@@ -202,6 +203,203 @@ def super_resolution(
     return waveform
 
 
+def super_resolution_from_waveform(
+    latent_diffusion,
+    waveform_np,
+    seed=42,
+    ddim_steps=200,
+    guidance_scale=3.5,
+):
+    """
+    Process a single waveform directly without saving to file.
+    
+    Args:
+        latent_diffusion: The model
+        waveform_np: numpy array of shape (samples,) at 48kHz
+        seed: Random seed
+        ddim_steps: Number of DDIM steps
+        guidance_scale: Guidance scale for generation
+        
+    Returns:
+        Processed waveform as numpy array
+    """
+    seed_everything(int(seed))
+    
+    sampling_rate = 48000
+    original_length = len(waveform_np)
+    duration = original_length / sampling_rate
+    
+    # Pad to multiple of 5.12s
+    if duration % 5.12 != 0:
+        pad_duration = duration + (5.12 - duration % 5.12)
+    else:
+        pad_duration = duration
+    
+    target_frame = int(pad_duration * 100)
+    
+    # Normalize and pad
+    waveform = normalize_wav(waveform_np)
+    waveform = pad_wav(waveform, target_length=int(sampling_rate * pad_duration))
+    
+    # Extract features
+    log_mel_spec, stft = wav_feature_extraction(torch.from_numpy(waveform), target_frame)
+    
+    batch = {
+        "waveform": torch.FloatTensor(waveform),
+        "stft": torch.FloatTensor(stft),
+        "log_mel_spec": torch.FloatTensor(log_mel_spec),
+        "sampling_rate": sampling_rate,
+    }
+    
+    batch.update(lowpass_filtering_prepare_inference(batch))
+    
+    lowpass_mel, lowpass_stft = wav_feature_extraction(
+        batch["waveform_lowpass"], target_frame
+    )
+    batch["lowpass_mel"] = lowpass_mel
+    
+    # Add batch dimension to all tensors
+    for k in batch.keys():
+        if isinstance(batch[k], torch.Tensor):
+            batch[k] = torch.FloatTensor(batch[k]).unsqueeze(0)
+    
+    # Process
+    with torch.no_grad():
+        result = latent_diffusion.generate_batch(
+            batch,
+            unconditional_guidance_scale=guidance_scale,
+            ddim_steps=ddim_steps,
+            duration=pad_duration,
+        )
+    
+    # Convert to numpy and trim to original length
+    if isinstance(result, torch.Tensor):
+        result = result.cpu().numpy()
+    
+    result = np.squeeze(result)
+    if len(result) > original_length:
+        result = result[:original_length]
+    
+    return result
+
+
+def _prepare_single_waveform_batch(waveform_np, target_duration, sampling_rate=48000):
+    """
+    Prepare batch tensors for a single waveform chunk.
+    All chunks will be padded to target_duration (in seconds).
+    
+    Returns:
+        batch: dict with tensors (no batch dimension yet)
+        original_length: original sample count before padding
+    """
+    original_length = len(waveform_np)
+    target_frame = int(target_duration * 100)
+    target_samples = int(target_duration * sampling_rate)
+    
+    # Normalize and pad
+    waveform = normalize_wav(waveform_np)
+    waveform = pad_wav(waveform, target_length=target_samples)
+    
+    # Extract features
+    log_mel_spec, stft = wav_feature_extraction(torch.from_numpy(waveform), target_frame)
+    
+    batch = {
+        "waveform": torch.FloatTensor(waveform),
+        "stft": torch.FloatTensor(stft),
+        "log_mel_spec": torch.FloatTensor(log_mel_spec),
+        "sampling_rate": sampling_rate,
+    }
+    
+    batch.update(lowpass_filtering_prepare_inference(batch))
+    
+    lowpass_mel, lowpass_stft = wav_feature_extraction(
+        batch["waveform_lowpass"], target_frame
+    )
+    batch["lowpass_mel"] = lowpass_mel
+    
+    return batch, original_length
+
+
+def super_resolution_batch(
+    latent_diffusion,
+    waveforms_list,
+    seed=42,
+    ddim_steps=200,
+    guidance_scale=3.5,
+):
+    """
+    Process multiple waveform chunks in a SINGLE forward pass (true GPU parallelism).
+    
+    Args:
+        latent_diffusion: The model
+        waveforms_list: List of numpy arrays, each shape (samples,) at 48kHz
+        seed: Random seed
+        ddim_steps: Number of DDIM steps
+        guidance_scale: Guidance scale for generation
+        
+    Returns:
+        List of processed waveforms as numpy arrays (trimmed to original lengths)
+    """
+    if len(waveforms_list) == 0:
+        return []
+    
+    seed_everything(int(seed))
+    sampling_rate = 48000
+    
+    # Find the maximum duration and round up to 5.12s multiple
+    max_duration = max(len(w) / sampling_rate for w in waveforms_list)
+    if max_duration % 5.12 != 0:
+        target_duration = max_duration + (5.12 - max_duration % 5.12)
+    else:
+        target_duration = max_duration
+    
+    print(f"[Batch] Processing {len(waveforms_list)} chunks, target_duration={target_duration:.2f}s")
+    
+    # Prepare batch for each waveform
+    batch_list = []
+    original_lengths = []
+    for waveform_np in waveforms_list:
+        batch, orig_len = _prepare_single_waveform_batch(waveform_np, target_duration, sampling_rate)
+        batch_list.append(batch)
+        original_lengths.append(orig_len)
+    
+    # Stack all batches along dim=0
+    combined_batch = {}
+    for key in batch_list[0].keys():
+        if isinstance(batch_list[0][key], torch.Tensor):
+            # Stack tensors: each has shape [time, ...] or [samples]
+            # After stack, shape becomes [batch, time, ...] or [batch, samples]
+            tensors = [b[key] for b in batch_list]
+            combined_batch[key] = torch.stack(tensors, dim=0)
+            print(f"  {key}: {combined_batch[key].shape}")
+        else:
+            combined_batch[key] = batch_list[0][key]
+    
+    # Process all chunks at once
+    with torch.no_grad():
+        results = latent_diffusion.generate_batch(
+            combined_batch,
+            unconditional_guidance_scale=guidance_scale,
+            ddim_steps=ddim_steps,
+            duration=target_duration,
+        )
+    
+    # Convert results to numpy
+    if isinstance(results, torch.Tensor):
+        results = results.cpu().numpy()
+    
+    # Split results back and trim to original lengths
+    output_list = []
+    for i, orig_len in enumerate(original_lengths):
+        result = results[i]
+        result = np.squeeze(result)
+        if len(result) > orig_len:
+            result = result[:orig_len]
+        output_list.append(result)
+    
+    return output_list
+
+
 def super_resolution_long_audio(
     latent_diffusion,
     input_file,
@@ -221,7 +419,13 @@ def super_resolution_long_audio(
         raise ValueError("Chunk duration must be greater than overlap duration.")
     
     # 1. Load the entire audio file once
-    waveform, sr = torchaudio.load(input_file)
+    # Use soundfile directly to avoid torchcodec issues in newer torchaudio versions
+    waveform_np, sr = sf.read(input_file, dtype='float32')
+    # soundfile returns (samples, channels), convert to (channels, samples) tensor
+    if waveform_np.ndim == 1:
+        waveform = torch.from_numpy(waveform_np).unsqueeze(0)
+    else:
+        waveform = torch.from_numpy(waveform_np.T)
 
     # Resample to 48000 Hz
     if sr != 48000:

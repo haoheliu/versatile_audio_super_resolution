@@ -186,7 +186,13 @@ def normalize_wav(waveform):
     return waveform * 0.5
 
 def read_wav_file(filename):
-    waveform, sr = torchaudio.load(filename)
+    # Use soundfile directly to avoid torchcodec issues in newer torchaudio versions
+    waveform_np, sr = sf.read(filename, dtype='float32')
+    # soundfile returns (samples, channels), convert to (channels, samples) tensor
+    if waveform_np.ndim == 1:
+        waveform = torch.from_numpy(waveform_np).unsqueeze(0)
+    else:
+        waveform = torch.from_numpy(waveform_np.T)
     duration = waveform.size(-1) / sr
 
     if(duration > 10.24):

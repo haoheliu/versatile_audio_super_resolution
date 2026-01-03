@@ -10,6 +10,7 @@ import torch.nn.functional
 import torch
 import numpy as np
 import torchaudio
+import soundfile as sf
 
 
 class AudioDataset(Dataset):
@@ -372,8 +373,13 @@ class AudioDataset(Dataset):
         return waveform[start:end]
 
     def read_wav_file(self, filename):
-        # waveform, sr = librosa.load(filename, sr=None, mono=True) # 4 times slower
-        waveform, sr = torchaudio.load(filename)
+        # Use soundfile directly to avoid torchcodec issues in newer torchaudio versions
+        waveform_np, sr = sf.read(filename, dtype='float32')
+        # soundfile returns (samples, channels), convert to (channels, samples) tensor
+        if waveform_np.ndim == 1:
+            waveform = torch.from_numpy(waveform_np).unsqueeze(0)
+        else:
+            waveform = torch.from_numpy(waveform_np.T)
 
         waveform, random_start = self.random_segment_wav(
             waveform, target_length=int(sr * self.duration)

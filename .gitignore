@@ -1,11 +1,44 @@
-*.pyc
-__pycache__
-test.py
-flagged
-output
-gradio_cached*
-*egg-info
-build*
-*.wav
+# 虚拟环境
+audiosr_env/
+
+# Gradio 缓存
+.gradio/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 临时文件
+temp_audio/
+*.tmp
+*.temp
+
+# 模型文件（太大）
+*.bin
+*.pt
+*.ckpt
+*.safetensors
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+
+# 分发/打包
 dist/
-*DS_Store*
+build/
+*.egg-info/
+
+# 多余文件
+cursor_torchcodec_module_missing.md
+激活环境.txt

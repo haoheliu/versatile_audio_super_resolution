@@ -12,6 +12,10 @@ Share your thoughts/samples/issues in our discord channel: https://discord.gg/HW
 ![Image Description](https://github.com/haoheliu/versatile_audio_super_resolution/blob/main/visualization.png?raw=true)
 
 ## Change Log
+- 2026-01-03:
+  - **Performance**: Implement batch processing for audio chunks to maximize GPU utilization.
+  - **Compatibility**: Support RTX 50 series (CUDA 12.8) and remove `torchcodec` dependency.
+  - **Fixes**: Fix audio drift/sync issues and reduce initial memory spikes with model warmup.
 - 2025-06-28: Add [LSD calculation pitfall demonstration](example/lsd_calculation_pitfall/README.md) showing the importance of energy scaling for fair Log Spectral Distance evaluation.
 - 2024-12-31: The training code of AudioSR can be found [here](https://drive.google.com/file/d/1BaZuHbk1AfURX7SvkaD5_ZWLwun-wdpW/view?usp=drive_link) (For reference only. The code is not carefully organized.).
 - 2024-12-16: Add [Important things to know to make AudioSR work](example/how_to_make_audiosr_work.md).

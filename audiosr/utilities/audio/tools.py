@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from scipy.io.wavfile import write
 import torchaudio
+import soundfile as sf
 
 from audiosr.utilities.audio.audio_processing import griffin_lim
 
@@ -26,8 +27,13 @@ def normalize_wav(waveform):
 
 
 def read_wav_file(filename, segment_length):
-    # waveform, sr = librosa.load(filename, sr=None, mono=True) # 4 times slower
-    waveform, sr = torchaudio.load(filename)  # Faster!!!
+    # Use soundfile directly to avoid torchcodec issues in newer torchaudio versions
+    waveform_np, sr = sf.read(filename, dtype='float32')
+    # soundfile returns (samples, channels), convert to (channels, samples) tensor
+    if waveform_np.ndim == 1:
+        waveform = torch.from_numpy(waveform_np).unsqueeze(0)
+    else:
+        waveform = torch.from_numpy(waveform_np.T)
     waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=16000)
     waveform = waveform.numpy()[0, ...]
     waveform = normalize_wav(waveform)
